@@ -2,7 +2,7 @@
 
 ## A collection of utility modules for ABB industrial robots.
 
-The purpose of this repo is to create a take away library for everyone to use in their robot programming projects.
+The purpose of this repo is to create a take away library for everyone to use in their robot programming projects. Currently only tested on the YuMi robot. 
 
 ### Help
 If you like to contribute to this library, please send a pull request and I will probably add it to the collection. Your code should be readable, nice and tidy.
