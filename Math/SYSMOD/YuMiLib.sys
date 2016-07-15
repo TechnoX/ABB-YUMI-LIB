@@ -1,0 +1,2763 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE Math(SYSMODULE,NOVIEW)
+
+    CONST string YuMiLib_Version:="1.0.0";
+    LOCAL CONST num jointlimits{7,2}:=[[-168.5,168.5],[-143.5,43.5],[-123.5,80],[-290,290],[-88,138],[-229,229],[-168.5,168.5]];
+    LOCAL CONST num calibcameraPoints:=15;
+    !TASK PERS tooldata Rotax_tool:=[TRUE,[[1.17067,-33.488,29.3468],[1,0,0,0]],[0.001,[0,0,0.001],[1,0,0,0],0,0,0]];
+    TASK PERS wobjdata calwobj:=[FALSE,TRUE,"",[[427.52,-170.005,400.103],[0.355326,-0.325694,-0.632327,-0.606489]],[[0,0,0],[1,0,0,0]]];
+    LOCAL PERS robtarget pcorr:=[[279.24,-251.74,174.51],[0.00838603,-0.259267,-0.965724,0.00936186],[0,1,1,11],[-171.107,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    LOCAL PERS string taskName:="T_ROB_R";
+    CONST speeddata vslow:=[100,50,5000,1000];
+    TASK PERS num Calibrated:=1;
+    CONST errnum AsimovError:=1;
+    VAR jointtarget jtLastPosition;
+    PERS bool bRestartMoveYActive;
+    PERS bool bRestartMoveYOrdered;
+    LOCAL VAR num nMoveYMode;
+    CONST pos psShoulderPoint:=[121.421,-103.149,461.063];
+
+    VAR errnum myerrno:=0;
+    VAR errnum ERR_RESTART_MOVEY:=-1;
+    VAR errnum YUMILIB_COLL_DETECTED:=-1;
+    VAR intnum TorqueSupint;
+    VAR num YumiLibMoveIndex;
+
+
+    LOCAL FUNC num CalcDistanceToStop(
+      jointtarget jointsol)
+        !Calculate the distance to closest mechanical stop
+        VAR num sol_dist{7};
+        VAR num smallest;
+
+        sol_dist{1}:=(jointlimits{1,2}-jointlimits{1,1})/2-abs(jointsol.robax.rax_1-(jointlimits{1,2}+jointlimits{1,1})/2);
+        sol_dist{2}:=(jointlimits{2,2}-jointlimits{2,1})/2-abs(jointsol.robax.rax_2-(jointlimits{2,2}+jointlimits{2,1})/2);
+        sol_dist{3}:=(jointlimits{3,2}-jointlimits{3,1})/2-abs(jointsol.robax.rax_3-(jointlimits{3,2}+jointlimits{3,1})/2);
+        sol_dist{4}:=(jointlimits{4,2}-jointlimits{4,1})/2-abs(jointsol.robax.rax_4-(jointlimits{4,2}+jointlimits{4,1})/2);
+        sol_dist{5}:=(jointlimits{5,2}-jointlimits{5,1})/2-abs(jointsol.robax.rax_5-(jointlimits{5,2}+jointlimits{5,1})/2);
+        sol_dist{6}:=(jointlimits{6,2}-jointlimits{6,1})/2-abs(jointsol.robax.rax_6-(jointlimits{6,2}+jointlimits{6,1})/2);
+        sol_dist{7}:=(jointlimits{7,2}-jointlimits{7,1})/2-abs(jointsol.extax.eax_a-(jointlimits{7,2}+jointlimits{7,1})/2);
+
+        smallest:=sol_dist{1};
+        FOR i FROM 2 TO 7 DO
+            IF sol_dist{i}<smallest THEN
+                smallest:=sol_dist{i};
+            ENDIF
+        ENDFOR
+        RETURN smallest;
+    ENDFUNC
+
+    !Calculates the norm of the distance between jt1 and jt2, in angles
+    FUNC num CalcJointDistance(
+      \switch MainAxes,
+      jointtarget jt1,
+      jointtarget jt2)
+
+        VAR num dist{7};
+        VAR num sqsum;
+
+        dist{1}:=jt1.robax.rax_1-jt2.robax.rax_1;
+        dist{2}:=jt1.robax.rax_2-jt2.robax.rax_2;
+        dist{3}:=jt1.robax.rax_3-jt2.robax.rax_3;
+        dist{4}:=jt1.robax.rax_4-jt2.robax.rax_4;
+        dist{5}:=jt1.robax.rax_5-jt2.robax.rax_5;
+        dist{6}:=jt1.robax.rax_6-jt2.robax.rax_6;
+        dist{7}:=jt1.extax.eax_a-jt2.extax.eax_a;
+        IF present(MainAxes) THEN
+            dist{4}:=0;
+            dist{5}:=0;
+            dist{6}:=0;
+        ENDIF
+        FOR i FROM 1 TO 7 DO
+            sqsum:=sqsum+dist{i}*dist{i};
+        ENDFOR
+        RETURN sqrt(sqsum);
+    ENDFUNC
+
+
+    FUNC num Min(
+      num a,
+      num b)
+
+        !Return the smallest value
+        IF a<b THEN
+            RETURN a;
+        ELSE
+            RETURN b;
+        ENDIF
+    ENDFUNC
+
+    FUNC num Mean(num a{*})
+        !Return the mean value of a
+        VAR num sum;
+        FOR i FROM 1 TO Dim(a,1) DO
+            sum:=sum+a{i};
+        ENDFOR
+        RETURN sum/Dim(a,1);
+    ENDFUNC
+
+    FUNC dnum NormDnum(dnum a{*})
+        !Return the norm of a
+        VAR dnum sum;
+        FOR i FROM 1 TO Dim(a,1) DO
+            sum:=sum+a{i}*a{i};
+        ENDFOR
+        RETURN SqrtDnum(sum);
+    ENDFUNC
+
+    FUNC num Max(
+      num a,
+      num b)
+
+        !Return the largest value
+        IF a>b THEN
+            RETURN a;
+        ELSE
+            RETURN b;
+        ENDIF
+    ENDFUNC
+
+    FUNC dnum MaxDnum(
+      dnum a,
+      dnum b)
+
+        !Return the largest value
+        IF a>b THEN
+            RETURN a;
+        ELSE
+            RETURN b;
+        ENDIF
+    ENDFUNC
+
+
+    FUNC num MaxArray(num a{*},\num idx)
+
+        !Return the largest value
+        VAR num max;
+        max:=a{1};
+        IF present(idx)
+				idx:=1;
+        FOR i FROM 2 TO Dim(a,1) DO
+            IF a{i}>max THEN
+                max:=a{i};
+                IF present(idx)
+				idx:=i;
+            ENDIF
+        ENDFOR
+        RETURN max;
+    ENDFUNC
+
+    FUNC num MinArray(num a{*},\VAR num idx)
+
+        !Return the largest value
+        VAR num min;
+        min:=a{1};
+        IF present(idx)
+				idx:=1;
+        FOR i FROM 2 TO Dim(a,1) DO
+            IF a{i}<min THEN
+                min:=a{i};
+                IF present(idx)
+				idx:=i;
+            ENDIF
+        ENDFOR
+        RETURN min;
+    ENDFUNC
+
+    FUNC pos CrossProduct(
+      pos a,
+      pos b)
+
+        !Return the vector cross product of a and b, a x b
+        VAR pos retpos;
+
+        retpos.x:=a.y*b.z-a.z*b.y;
+        retpos.y:=a.z*b.x-a.x*b.z;
+        retpos.z:=a.x*b.y-a.y*b.x;
+        RETURN retpos;
+    ENDFUNC
+
+    FUNC dnum DotProductDnum(
+      dnum a{*},
+      dnum b{*})
+
+        !Return the dot product of a and b, a and b should have same dim
+        VAR dnum sum;
+        FOR i FROM 1 TO Dim(a,1) DO
+            sum:=sum+a{i}*b{i};
+        ENDFOR
+        RETURN sum;
+    ENDFUNC
+
+    FUNC pos PoseToScrew(
+      pose P,
+      \VAR pos s0,
+      \VAR num t,
+      \VAR num theta)
+
+        !Returns screw axis of pose P. if included the full screw parameters are computed
+        VAR pos s;
+        VAR num mAngle;
+        VAR num sinAngle;
+        VAR num mt;
+        VAR dnum A{3,3};
+        VAR dnum b{3};
+        VAR dnum x{3};
+        VAR num tA{4,4};
+        VAR bool status;
+
+        mangle:=2*acos(P.rot.q1);
+        sinAngle:=sin(mangle/2);
+        IF abs(sinAngle)<1e-5 THEN
+            s.z:=1;
+        ELSE
+            s.x:=P.rot.q2/sinAngle;
+            s.y:=P.rot.q3/sinAngle;
+            s.z:=P.rot.q4/sinAngle;
+        ENDIF
+        IF PRESENT(theta) THEN
+            theta:=mangle;
+        ENDIF
+        mt:=DotProd(P.trans,s);
+        IF PRESENT(t) THEN
+            t:=mt;
+        ENDIF
+        IF PRESENT(s0) THEN
+            posetoxform P,tA;
+            A:=[[numtodnum(tA{1,1}-1),numtodnum(tA{1,2}),numtodnum(tA{1,3})],
+            [numtodnum(tA{2,1}),numtodnum(tA{2,2}-1),numtodnum(tA{2,3})],
+            [numtodnum(s.x),numtodnum(s.y),numtodnum(s.z)]];
+            b:=[numtodnum(mt*s.x-tA{1,4}),
+            numtodnum(mt*s.y-tA{2,4}),
+            1];
+            !status:=solve_gauss(A,b,3,x);
+            MatrixSolve A\A_m:=3\A_n:=3,b,x;
+            s0.x:=DnumTonum(x{1});
+            s0.y:=DnumTonum(x{2});
+            s0.z:=DnumTonum(x{3});
+        ENDIF
+        RETURN s;
+    ENDFUNC
+
+    FUNC pose ScrewToPose(pos s,pos s0,num t,num theta)
+        !Returns the pose calculated from screw parameters s,s0,t,theta
+        !s = screw axis direction, s0 = point on screw axis, t = translation along screw axis, theta = rotation about screw axis
+        VAR pose retpos;
+        VAR num sinA;
+        VAR num P{4,4};
+
+        sinA:=sin(theta/2);
+        retpos.rot.q1:=cos(theta/2);
+        retpos.rot.q2:=s.x*sinA;
+        retpos.rot.q3:=s.y*sinA;
+        retpos.rot.q4:=s.z*sinA;
+        posetoxform retpos,P;
+        retpos.trans.x:=t*s.x-s0.x*(P{1,1}-1)-s0.y*P{1,2}-s0.z*P{1,3};
+        retpos.trans.y:=t*s.y-s0.x*P{2,1}-s0.y*(P{2,2}-1)-s0.z*P{2,3};
+        retpos.trans.z:=t*s.z-s0.x*P{3,1}-s0.y*P{3,2}-s0.z*(P{3,3}-1);
+        RETURN retpos;
+    ENDFUNC
+
+
+    FUNC pos QuatRotAxis(orient q,\VAR num angle)
+        !Return the rotation axis and rotation angle of q
+        VAR pos retpos;
+        VAR num mAngle;
+        VAR num sinAngle;
+
+        mangle:=2*acos(q.q1);
+        IF PRESENT(angle) THEN
+            angle:=mangle;
+        ENDIF
+        sinAngle:=sin(mangle/2);
+        IF abs(sinAngle)<1e-5 THEN
+            retpos.z:=1;
+        ELSE
+            retpos.x:=q.q2/sinAngle;
+            retpos.y:=q.q3/sinAngle;
+            retpos.z:=q.q4/sinAngle;
+        ENDIF
+        RETURN retpos;
+    ENDFUNC
+
+    FUNC orient AxisAngletoQuat(pos axis,num angle)
+        VAR pos nAxis;
+        VAR num s;
+        nAxis:=NormalizePos(axis);
+        s:=sin(angle/2);
+        RETURN [cos(angle/2),nAxis.x*s,nAxis.y*s,nAxis.z*s];
+    ENDFUNC
+
+
+    FUNC pos NormalizePos(pos a)
+        !Returns a normalized position with length = 1
+        VAR pos retpos;
+        VAR num norm;
+
+        norm:=sqrt(a.x*a.x+a.y*a.y+a.z*a.z);
+        retpos.x:=a.x/norm;
+        retpos.y:=a.y/norm;
+        retpos.z:=a.z/norm;
+        RETURN retpos;
+    ENDFUNC
+
+
+    FUNC orient Vec2Quat(pos v1,pos v2,pos v3)
+
+        VAR orient q;
+        VAR num traceR;
+        VAR num rootv;
+        VAR num u0;
+        VAR num u1;
+        VAR num u2;
+        VAR num u3;
+
+        traceR:=v1.x+v2.y+v3.z;
+        IF traceR>0 THEN
+            rootv:=sqrt(traceR+1.0);
+            u0:=0.5*rootv;
+            rootv:=0.5/rootv;
+            u1:=(v2.z-v3.y)*rootv;
+            u2:=(v3.x-v1.z)*rootv;
+            u3:=(v1.y-v2.x)*rootv;
+        ELSEIF (v1.x>=v2.y) AND (v1.x>=v3.z) THEN
+            rootv:=sqrt(1.0+v1.x-(v2.y+v3.z));
+            u1:=0.5*rootv;
+            rootv:=0.5/rootv;
+            u2:=(v2.x+v1.y)*rootv;
+            u3:=(v1.z+v3.x)*rootv;
+            u0:=(v2.z-v3.y)*rootv;
+        ELSEIF (v2.y>=v3.z) THEN
+            rootv:=sqrt(1.0+v2.y-(v3.z+v1.x));
+            u2:=0.5*rootv;
+            rootv:=0.5/rootv;
+            u3:=(v3.y+v2.z)*rootv;
+            u1:=(v2.x+v1.y)*rootv;
+            u0:=(v3.x-v1.z)*rootv;
+        ELSE
+            rootv:=sqrt(1.0+v3.z-(v1.x+v2.y));
+            u3:=0.5*rootv;
+            rootv:=0.5/rootv;
+            u1:=(v1.z+v3.x)*rootv;
+            u2:=(v3.y+v2.z)*rootv;
+            u0:=(v1.y-v2.x)*rootv;
+        ENDIF
+        q:=[u0,u1,u2,u3];
+        q:=NOrient(q);
+        IF q.q1<0 THEN
+            q:=[-q.q1,-q.q2,-q.q3,-q.q4];
+        ENDIF
+        RETURN q;
+    ENDFUNC
+
+
+    FUNC pose InterpolatePose(pose p1,pose p2,num t)
+        !Return an interpolated pose between p1 and p2, using linear interpolation
+        !t=0 gives p1, t=1 gives p2
+        VAR num r;
+        VAR num s;
+        VAR num alpha;
+        VAR num sinInv;
+        VAR num lambda;
+        VAR orient q1;
+        VAR orient q2;
+        VAR orient q;
+        VAR bool flip;
+        VAR pose retPose;
+
+
+        !Interpolate the orientation
+        q1:=p1.rot;
+        q2:=p2.rot;
+        !t:=(Angle-lowAngle)/(highAngle-lowAngle);
+        lambda:=q1.q1*q2.q1+
+                        q1.q2*q2.q2+
+                        q1.q3*q2.q3+
+                        q1.q4*q2.q4;
+        r:=0.0;
+        s:=0.0;
+        flip:=FALSE;
+        ! Use SLERP to interpolate between the quaternions */
+        IF (lambda<0.0) THEN
+            !
+            ! * The quaternions are pointing in opposite directions, so
+            ! * change sign to interpolate towards -q2 instead.
+            ! */
+            flip:=TRUE;
+            lambda:=-lambda;
+        ENDIF
+        !/* The second condition is just to be safe from bad input quaternions */
+        IF (abs(lambda-1.0)<0.0001 OR lambda>1.0) THEN
+            ! /*
+            !  * the quaternions are nearly parallel, so use
+            !  * linear interpolation instead
+            !  */
+            r:=1.0-t;
+            s:=t;
+        ELSE
+            !/* compute spherical interpolation factors */
+            alpha:=acos(lambda);
+            sinInv:=1.0/sin(alpha);
+            r:=sin((1.0-t)*alpha)*sinInv;
+            s:=sin(t*alpha)*sinInv;
+        ENDIF
+        IF (flip) THEN
+            s:=-s;
+        ENDIF
+        !/* set the interpolated quaternion */
+        q.q1:=r*q1.q1+s*q2.q1;
+        q.q2:=r*q1.q2+s*q2.q2;
+        q.q3:=r*q1.q3+s*q2.q3;
+        q.q4:=r*q1.q4+s*q2.q4;
+        !/* make sure u0 is positive */
+        IF (q.q1<0.0) THEN
+            q.q1:=-q.q1;
+            q.q2:=-q.q2;
+            q.q3:=-q.q3;
+            q.q4:=-q.q4;
+        ENDIF
+        q:=NOrient(q);
+        !Now calculate interpolated translation
+        retPose.trans.x:=(p2.trans.x-p1.trans.x)*t+p1.trans.x;
+        retPose.trans.y:=(p2.trans.y-p1.trans.y)*t+p1.trans.y;
+        retPose.trans.z:=(p2.trans.z-p1.trans.z)*t+p1.trans.z;
+        retPose.rot:=q;
+        RETURN retPose;
+    ENDFUNC
+
+    FUNC robtarget CalcSingAreapoint(
+      robtarget targetPoint,
+      jointtarget startAngles,
+      PERS tooldata Tool,
+      num ax4,
+      num ax5,
+      num ax6
+      \PERS wobjdata WObj
+      \VAR jointtarget jointsol)
+
+        !Calculates a robtarget, where joint values for wrist are given instead of rotation
+        !Use to estimate where motions with singarea\wrist will bring the robot
+        VAR jointtarget jtm;
+        VAR jointtarget updated_jtm;
+        !VAR jointtarget jtstart;
+        VAR robtarget singAreapoint;
+        VAR robtarget startPoint;
+        VAR robtarget newTargetPoint;
+        VAR num iter;
+        VAR dnum numJac{4,4};
+        VAR dnum x{4};
+        VAR num x_corr{4};
+        VAR num x_corr2{4};
+        VAR dnum b{4};
+        VAR bool status;
+        VAR num lastErrNorm;
+        VAR num ErrNorm;
+        VAR num scale;
+
+        !jtm:=CalcJointT(startpoint,Tool \WObj?WObj);
+        jtm:=startAngles;
+        !Incase the correct solution is found in the starting guess
+        jtm.robax.rax_4:=ax4;
+        jtm.robax.rax_5:=ax5;
+        jtm.robax.rax_6:=ax6;
+        singAreapoint:=CalcRobt(jtm,Tool\WObj?WObj);
+        startPoint:=singAreapoint;
+        lastErrNorm:=VectMagn(targetPoint.trans-singAreapoint.trans);
+        ErrNorm:=lastErrNorm;
+        WHILE ErrNorm>1 DO
+            !calc error
+            status:=CalcSingAreapointErr(targetPoint,Tool,jtm,b\WObj?WObj);
+            !calc numerical jacobian
+            status:=CalcSingAreapointNumJac(targetPoint,Tool,jtm,numJac\WObj?WObj);
+            !Solve for correction
+            MatrixSolve numJac\A_m:=4\A_n:=4,b,x;
+            FOR i FROM 1 TO 4 DO
+                x_corr{i}:=dnumtonum(x{i});
+            ENDFOR
+
+            !update jtm with correction
+            lastErrNorm:=dnumtonum(NormDnum(b));
+            ErrNorm:=lastErrNorm+1;
+            scale:=2;
+            IF iter=0 scale:=1;
+            updated_jtm:=jtm;
+            WHILE ErrNorm>lastErrNorm AND scale>0.2 DO
+                scale:=scale/2;
+                updated_jtm.robax.rax_1:=jtm.robax.rax_1-dnumtonum(x{1})*scale;
+                updated_jtm.robax.rax_2:=jtm.robax.rax_2-dnumtonum(x{2})*scale;
+                updated_jtm.robax.rax_3:=jtm.robax.rax_3-dnumtonum(x{3})*scale;
+                updated_jtm.extax.eax_a:=jtm.extax.eax_a-dnumtonum(x{4})*scale;
+                !singAreapoint:=CalcRobt(updated_jtm,Tool \WObj?WObj);
+                status:=CalcSingAreapointErr(targetPoint,Tool,updated_jtm,b\WObj?WObj);
+                ErrNorm:=dnumtonum(NormDnum(b));
+            ENDWHILE
+            jtm:=updated_jtm;
+
+            singAreapoint:=CalcRobt(jtm,Tool\WObj?WObj);
+            !lastErrNorm:=ErrNorm;
+            !ErrNorm:=VectMagn(targetPoint.trans-singAreapoint.trans);
+            IF scale<0.2 THEN
+                !The last iteration did not converge, attemot smaller step
+                newTargetPoint.trans.x:=(targetPoint.trans.x+startPoint.trans.x)/2;
+                newTargetPoint.trans.y:=(targetPoint.trans.y+startPoint.trans.y)/2;
+                newTargetPoint.trans.z:=(targetPoint.trans.z+startPoint.trans.z)/2;
+                newTargetPoint.extax.eax_a:=(targetPoint.extax.eax_a+startPoint.extax.eax_a)/2;
+
+                singAreapoint:=CalcSingAreapoint(newTargetPoint,startAngles,Tool,ax4,ax5,ax6\WObj?WObj\jointsol:=startAngles);
+                !jtm:=startAngles;
+                jtm.robax.rax_1:=startAngles.robax.rax_1;
+                jtm.robax.rax_2:=startAngles.robax.rax_2;
+                jtm.robax.rax_3:=startAngles.robax.rax_3;
+                jtm.extax.eax_a:=startAngles.extax.eax_a;
+            ENDIF
+            iter:=iter+1;
+            IF iter>10 THEN
+                !RAISE AsimovError;
+                RETURN [[0,0,0],[0,0,0,0],[0,0,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+            ENDIF
+        ENDWHILE
+        IF present(jointsol) THEN
+            jointsol:=jtm;
+        ENDIF
+        !Check that the solution is within working range
+        IF Calcdistancetostop(jtm)<2 THEN
+            !the point is outside or close to joint limits
+            IF present(jointsol) THEN
+                jointsol:=startAngles;
+            ENDIF
+            singAreapoint:=targetPoint;
+        ENDIF
+        RETURN singAreapoint;
+    ENDFUNC
+
+    LOCAL FUNC bool CalcSingAreapointNumJac(
+      robtarget tp,
+      PERS tooldata Tool,
+      jointtarget jtm,
+      VAR dnum numJac{*,*}
+      \PERS wobjdata WObj)
+
+        VAR jointtarget jtp;
+        VAR dnum dh:=1e-4;
+        VAR num h:=1e-4;
+        VAR dnum ls{4};
+        VAR dnum rs{4};
+        VAR bool status;
+
+        jtp:=jtm;
+        jtp.robax.rax_1:=jtp.robax.rax_1-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.robax.rax_1:=jtp.robax.rax_1+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,1}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        jtp:=jtm;
+        jtp.robax.rax_2:=jtp.robax.rax_2-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.robax.rax_2:=jtp.robax.rax_2+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,2}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        jtp:=jtm;
+        jtp.robax.rax_3:=jtp.robax.rax_3-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.robax.rax_3:=jtp.robax.rax_3+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,3}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        jtp:=jtm;
+        jtp.extax.eax_a:=jtp.extax.eax_a-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.extax.eax_a:=jtp.extax.eax_a+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,4}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        RETURN TRUE;
+    ENDFUNC
+
+
+    LOCAL FUNC bool CalcSingAreapointErr(
+      robtarget tp,
+      PERS tooldata Tool,
+      jointtarget jtm,
+      VAR dnum b{*}
+      \PERS wobjdata WObj)
+
+        VAR robtarget sp;
+        VAR num ArmAngleErr;
+
+        sp:=CalcRobt(jtm,Tool\WObj?WObj);
+
+        ArmAngleErr:=tp.extax.eax_a-sp.extax.eax_a;
+        IF abs(ArmAngleErr)>180 THEN
+            ArmAngleErr:=Modulo(tp.extax.eax_a,360)-Modulo(sp.extax.eax_a,360);
+        ENDIF
+
+        b:=[numtodnum(tp.trans.x-sp.trans.x),
+      numtodnum(tp.trans.y-sp.trans.y),
+      numtodnum(tp.trans.z-sp.trans.z),
+      numtodnum(ArmAngleErr)];
+        RETURN TRUE;
+    ENDFUNC
+
+    PROC posetoxform(pose mpoint,VAR num outMatrix{*,*})
+        VAR num xp;
+        VAR num yp;
+        VAR num zp;
+        VAR num q1;
+        VAR num q2;
+        VAR num q3;
+        VAR num q4;
+
+        VAR num xt;
+        VAR num yt;
+        VAR num zt;
+        VAR num xx;
+        VAR num xy;
+        VAR num xz;
+        VAR num yy;
+        VAR num yz;
+        VAR num zz;
+        VAR num wx;
+        VAR num wy;
+        VAR num wz;
+
+
+        xp:=mpoint.trans.x;
+        yp:=mpoint.trans.y;
+        zp:=mpoint.trans.z;
+        q1:=mpoint.rot.q1;
+        q2:=mpoint.rot.q2;
+        q3:=mpoint.rot.q3;
+        q4:=mpoint.rot.q4;
+
+        xt:=q2+q2;
+        yt:=q3+q3;
+        zt:=q4+q4;
+        xx:=q2*xt;
+        xy:=q2*yt;
+        xz:=q2*zt;
+        yy:=q3*yt;
+        yz:=q3*zt;
+        zz:=q4*zt;
+        wx:=q1*xt;
+        wy:=q1*yt;
+        wz:=q1*zt;
+
+        outMatrix{1,1}:=1.0-(yy+zz);
+        outMatrix{1,2}:=xy-wz;
+        outMatrix{1,3}:=xz+wy;
+        outMatrix{1,4}:=xp;
+
+        outMatrix{2,1}:=xy+wz;
+        outMatrix{2,2}:=1.0-(xx+zz);
+        outMatrix{2,3}:=yz-wx;
+        outMatrix{2,4}:=yp;
+
+        outMatrix{3,1}:=xz-wy;
+        outMatrix{3,2}:=yz+wx;
+        outMatrix{3,3}:=1.0-(xx+yy);
+        outMatrix{3,4}:=zp;
+
+        outMatrix{4,1}:=0;
+        outMatrix{4,2}:=0;
+        outMatrix{4,3}:=0;
+        outMatrix{4,4}:=1;
+    ENDPROC
+
+    PROC MatrixMultiply(num A{*,*},num B{*,*},VAR num res{*,*})
+        VAR num sum;
+
+        FOR i FROM 1 TO Dim(A,1) DO
+            FOR j FROM 1 TO Dim(B,2) DO
+                sum:=0;
+                FOR n FROM 1 TO Dim(A,2) DO
+                    sum:=sum+A{i,n}*B{n,j};
+                ENDFOR
+                res{i,j}:=sum;
+            ENDFOR
+        ENDFOR
+    ENDPROC
+
+    PROC MatrixTranspose(num A{*,*},VAR num transpA{*,*})
+        FOR i FROM 1 TO Dim(A,1) DO
+            FOR j FROM 1 TO Dim(A,2) DO
+                transpA{j,i}:=A{i,j};
+            ENDFOR
+        ENDFOR
+    ENDPROC
+
+    PROC MatrixTransposeDnum(dnum A{*,*},VAR dnum transpA{*,*})
+        FOR i FROM 1 TO Dim(A,1) DO
+            FOR j FROM 1 TO Dim(A,2) DO
+                transpA{j,i}:=A{i,j};
+            ENDFOR
+        ENDFOR
+    ENDPROC
+
+    PROC MatrixMultiplyDnum(dnum A{*,*},dnum B{*,*},VAR dnum res{*,*})
+        VAR dnum sum;
+
+        FOR i FROM 1 TO Dim(A,1) DO
+            FOR j FROM 1 TO Dim(B,2) DO
+                sum:=0;
+                FOR n FROM 1 TO Dim(A,2) DO
+                    sum:=sum+A{i,n}*B{n,j};
+                ENDFOR
+                res{i,j}:=sum;
+            ENDFOR
+        ENDFOR
+        RETURN ;
+    ENDPROC
+
+    PROC invert2DMatrix(num A{*,*},VAR num invA{*,*})
+        VAR num det;
+
+        det:=A{1,1}*A{2,2}-A{2,1}*A{1,2};
+        invA{1,1}:=A{2,2}/det;
+        invA{1,2}:=-A{1,2}/det;
+        invA{2,2}:=A{1,1}/det;
+        invA{2,1}:=-A{2,1}/det;
+    ENDPROC
+
+    FUNC bool invert3DMatrix(dnum M{*,*},VAR dnum res{*,*})
+        VAR dnum det;
+        VAR dnum a;
+        VAR dnum b;
+        VAR dnum c;
+        VAR dnum d;
+        VAR dnum e;
+        VAR dnum f;
+        VAR dnum g;
+        VAR dnum h;
+        VAR dnum k;
+        a:=M{1,1};
+        b:=M{1,2};
+        c:=M{1,3};
+        d:=M{2,1};
+        e:=M{2,2};
+        f:=M{2,3};
+        g:=M{3,1};
+        h:=M{3,2};
+        k:=M{3,3};
+        det:=a*(e*k-f*h)+b*(f*g-k*d)+c*(d*h-e*g);
+        res:=[[(e*k-f*h)/det,(c*h-b*k)/det,(b*f-c*e)/det],
+    [(f*g-d*k)/det,(a*k-c*g)/det,(c*d-a*f)/det],
+    [(d*h-e*g)/det,(b*g-a*h)/det,(a*e-b*d)/det]];
+        RETURN TRUE;
+    ENDFUNC
+
+    FUNC num Modulo(num a,num b)
+        !Returns a modulus b
+        VAR num dec;
+        VAR num m;
+
+        dec:=a-Trunc(a);
+        m:=Trunc(a) MOD b;
+        IF m<0 THEN
+            m:=b+m+dec;
+        ELSE
+            m:=m+dec;
+        ENDIF
+        IF m>b THEN
+            m:=m-b;
+        ELSEIF m<0 THEN
+            m:=b+m;
+        ENDIF
+        RETURN m;
+    ENDFUNC
+
+    FUNC dnum SignDnum(dnum u)
+        IF u>=0 RETURN 1;
+        RETURN -1;
+    ENDFUNC
+
+    FUNC num Sign(num u)
+        IF u>=0 RETURN 1;
+        RETURN -1;
+    ENDFUNC
+
+
+    !/******************************* PMatDecompQR ****************************
+    !*Decomposes a camera projection matrix P to K, R, t, where P=K*[R t]
+    !*P is a 3 x 4 projection matrix
+    !*K is the intrinsic parameter matrix
+    !*R is the rotation matrix and t is the translation
+    !*The decomposition is computed with QR factorization
+    !****************************************************************************
+    FUNC bool PMatDecompQR(dnum P{*,*},INOUT dnum K{*,*},INOUT dnum Kinv{*,*},INOUT dnum R{*,*},INOUT dnum t{*,*},dnum Zsign)
+        !VAR dnum P{3,4}:=[[-154.461033559999,698.626964187758,-25.0892689192571,-72744.1703244885],
+        ![696.966777427018,153.847769481927,-37.6899184975496,-38694.9995023603],
+        ![0.0111585533282917,-0.0121750472392832,0.999863618156167,-565.740305247706]];
+        VAR dnum A{3,3};
+        VAR dnum Q{3,3};
+        VAR dnum Ainv{3,3};
+        !VAR dnum K{3,3};
+        !VAR dnum Kinv{3,3};
+        VAR dnum Rinv{3,3};
+        VAR dnum S{3,3};
+        !VAR dnum t{3,1};
+        VAR dnum detR;
+        VAR bool status;
+        IF NOT ((Dim(P,1)=3) AND (Dim(P,2)=4)) THEN
+            ErrWrite "Dimension mismatch","Matrix P should be 3 x 4, VAR dnum P{3,4}";
+            RETURN FALSE;
+        ENDIF
+        IF NOT ((Dim(K,1)=3) AND (Dim(K,2)=3)) THEN
+            ErrWrite "Dimension mismatch","Matrix K should be 3 x 3, VAR dnum K{3,3}";
+            RETURN FALSE;
+        ENDIF
+        IF NOT ((Dim(R,1)=3) AND (Dim(R,2)=3)) THEN
+            ErrWrite "Dimension mismatch","Matrix R should be 3 x 3, VAR dnum R{3,3}";
+            RETURN FALSE;
+        ENDIF
+        IF NOT ((Dim(t,1)=3) AND (Dim(t,2)=1)) THEN
+            ErrWrite "Dimension mismatch","Matrix t should be 3, VAR dnum t{3,1}";
+            RETURN FALSE;
+        ENDIF
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 3 DO
+                A{i,j}:=P{i,j};
+            ENDFOR
+        ENDFOR
+        status:=invert3DMatrix(A,Ainv);
+        !Solve_QR Ainv,Kinv;
+        MatrixSolveQR Ainv,Q,Kinv;
+        Kinv{2,1}:=0;
+        Kinv{3,1}:=0;
+        Kinv{3,2}:=0;
+        status:=invert3DMatrix(Kinv,K);
+        MatrixMultiplyDnum Ainv,K,Rinv;
+        !%% Sign Checking
+        !We assume
+        IF (Zsign*K{1,1}<0) THEN
+            !TPWrite ("Swapping K{1,1}");
+            S:=[[-1,0,0],[0,1,0],[0,0,1]];
+            MatrixMultiplyDnum Rinv,S,Rinv;
+            MatrixMultiplyDnum S,Kinv,Kinv;
+        ELSE
+            !TPWrite ("Not Swapping K{1,1}");
+        ENDIF
+
+        IF (Zsign*K{2,2}<0) THEN
+            !TPWrite ("Swapping K{2,2}");
+            S:=[[1,0,0],[0,-1,0],[0,0,1]];
+            MatrixMultiplyDnum Rinv,S,Rinv;
+            MatrixMultiplyDnum S,Kinv,Kinv;
+        ELSE
+            !TPWrite ("Not Swapping K{2,2}");
+        ENDIF
+        IF (Kinv{3,3}<0) THEN
+            S:=[[1,0,0],[0,1,0],[0,0,-1]];
+            MatrixMultiplyDnum Rinv,S,Rinv;
+            MatrixMultiplyDnum S,Kinv,Kinv;
+        ENDIF
+
+        !%% Translation Vector
+        MatrixMultiplyDnum Kinv,[[P{1,4}],[P{2,4}],[P{3,4}]],t;
+        !%% if R is a rotation matrix, then det(R)=1.
+        !if det(R)< 0
+        !    t = -t;
+        !    R = -R;
+        !end
+        detR:=Rinv{1,1}*(Rinv{3,3}*Rinv{2,2}-Rinv{3,2}*Rinv{2,3})-Rinv{2,1}*(Rinv{3,3}*Rinv{1,2}-Rinv{3,2}*Rinv{1,3})+Rinv{3,1}*(Rinv{2,3}*Rinv{1,2}-Rinv{2,2}*Rinv{1,3});
+        IF detR<0 THEN
+            FOR i FROM 1 TO 3 DO
+                FOR j FROM 1 TO 3 DO
+                    Rinv{i,j}:=-Rinv{i,j};
+                ENDFOR
+                t{i,1}:=-t{i,1};
+            ENDFOR
+        ENDIF
+
+        status:=invert3DMatrix(Rinv,R);
+        status:=invert3DMatrix(Kinv,K);
+
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 3 DO
+                K{i,j}:=K{i,j}/K{3,3};
+            ENDFOR
+        ENDFOR
+        RETURN TRUE;
+
+
+
+    ENDFUNC
+
+    !/******************************* CalibIntrinsic ****************************
+    !*Calibrates the intrinsic parameters of a camera. The camera should be
+    !*2D-calibrated with checkerboard before this function is used.
+    !* robPos{n} should be n poses. There should be no rotation between the targets
+    !* camPos{n,2} should be the [x,y] camera measurements corresponding to robPos{n}
+    !* n must be >=6
+    !****************************************************************************
+    FUNC bool CalibIntrinsic(dnum robPos{*,*},dnum camPos{*,*},num n,VAR pose robTcam,VAR dnum K{*,*},VAR dnum Kinv{*,*},\switch print,\switch HandHeldCamera)
+        VAR dnum robPosErr{calibcameraPoints,3};
+        VAR dnum camPosErr{calibcameraPoints,2};
+        VAR dnum A{calibcameraPoints*2,12};
+        VAR dnum tmp1{12};
+        VAR dnum tmp2{12};
+        VAR bool status;
+        VAR dnum U{calibcameraPoints*2,12};
+        VAR dnum W{12};
+        VAR dnum V{12,12};
+        VAR dnum trobPos{3};
+        VAR dnum tcamPos{2};
+        VAR dnum srobPos{3};
+        VAR dnum scamPos{2};
+        VAR dnum P{3,4};
+        VAR dnum P_test{3,4};
+        VAR dnum Scale_robPos{4,4};
+        VAR dnum Scale_camPos{3,3};
+        VAR dnum result3{3,3};
+        VAR dnum result4{4,4};
+        VAR dnum abs_lambda;
+        !VAR dnum camK{3,3};
+        VAR dnum camR{3,3};
+        VAR dnum camT{3,1};
+        VAR dnum minW;
+        VAR num minWidx;
+        VAR iodev logfile;
+        VAR string taskname;
+        VAR pos p1;
+        VAR pos p2;
+        VAR pos p3;
+        VAR num d12;
+        VAR num d13;
+        VAR num signChecks;
+        VAR dnum tmp3{3,1};
+        VAR pos errPos;
+        VAR pose camTrob;
+        VAR num Zsign;
+        !Save original robPos and camPos
+        FOR i FROM 1 TO n DO
+            robPosErr{i,1}:=robPos{i,1};
+            robPosErr{i,2}:=robPos{i,2};
+            robPosErr{i,3}:=robPos{i,3};
+            camPosErr{i,1}:=camPos{i,1};
+            camPosErr{i,2}:=camPos{i,2};
+        ENDFOR
+        !Calculate normalization scaling
+        FOR i FROM 1 TO n DO
+            trobPos{1}:=trobPos{1}+robPos{i,1}/numtodnum(n);
+            trobPos{2}:=trobPos{2}+robPos{i,2}/numtodnum(n);
+            trobPos{3}:=trobPos{3}+robPos{i,3}/numtodnum(n);
+            tcamPos{1}:=tcamPos{1}+camPos{i,1}/numtodnum(n);
+            tcamPos{2}:=tcamPos{2}+camPos{i,2}/numtodnum(n);
+        ENDFOR
+        FOR i FROM 1 TO n DO
+            srobPos{1}:=srobPos{1}+(robPos{i,1}-trobPos{1})*(robPos{i,1}-trobPos{1})/numtodnum(n-1);
+            srobPos{2}:=srobPos{2}+(robPos{i,2}-trobPos{2})*(robPos{i,2}-trobPos{2})/numtodnum(n-1);
+            srobPos{3}:=srobPos{3}+(robPos{i,3}-trobPos{3})*(robPos{i,3}-trobPos{3})/numtodnum(n-1);
+            scamPos{1}:=scamPos{1}+(camPos{i,1}-tcamPos{1})*(camPos{i,1}-tcamPos{1})/numtodnum(n-1);
+            scamPos{2}:=scamPos{2}+(camPos{i,2}-tcamPos{2})*(camPos{i,2}-tcamPos{2})/numtodnum(n-1);
+        ENDFOR
+        srobPos{1}:=SqrtDnum(srobPos{1});
+        srobPos{2}:=SqrtDnum(srobPos{2});
+        srobPos{3}:=SqrtDnum(srobPos{3});
+        scamPos{1}:=SqrtDnum(scamPos{1});
+        scamPos{2}:=SqrtDnum(scamPos{2});
+        FOR i FROM 1 TO n DO
+            robPos{i,1}:=(robPos{i,1}-trobPos{1})/srobPos{1};
+            robPos{i,2}:=(robPos{i,2}-trobPos{2})/srobPos{2};
+            robPos{i,3}:=(robPos{i,3}-trobPos{3})/srobPos{3};
+            camPos{i,1}:=(camPos{i,1}-tcamPos{1})/scamPos{1};
+            camPos{i,2}:=(camPos{i,2}-tcamPos{2})/scamPos{2};
+        ENDFOR
+        !Setup calibration matrix
+        FOR i FROM 1 TO n DO
+            tmp1:=[robPos{i,1},robPos{i,2},robPos{i,3},1,0,0,0,0,-camPos{i,1}*robPos{i,1},-camPos{i,1}*robPos{i,2},-camPos{i,1}*robPos{i,3},-camPos{i,1}];
+            tmp2:=[0,0,0,0,robPos{i,1},robPos{i,2},robPos{i,3},1,-camPos{i,2}*robPos{i,1},-camPos{i,2}*robPos{i,2},-camPos{i,2}*robPos{i,3},-camPos{i,2}];
+            FOR j FROM 1 TO 12 DO
+                A{i*2-1,j}:=tmp1{j};
+                A{i*2,j}:=tmp2{j};
+            ENDFOR
+        ENDFOR
+        !Print A
+        IF present(print) THEN
+            !taskname:=GetTaskName();
+            taskname:=StrPart(GetTaskName(),2,5);
+            Open "HOME:"\File:="logCalibIntrinsic"+taskname+".txt",logfile\Write;
+            Write logfile,"A=";
+            FOR i FROM 1 TO n*2 DO
+                FOR j FROM 1 TO 11 DO
+                    Write logfile,""\Dnum:=A{i,j}\NoNewLine;
+                    Write logfile,","\NoNewLine;
+                ENDFOR
+                Write logfile,""\Dnum:=A{i,12};
+            ENDFOR
+        ENDIF
+        !Solve for projection matrix
+        !status:=SVDcmp(A,n*2,12,W,V,tmp1);
+        !Solve_SVD A,U,W,V\rows:=n*2\columns:=12\es;
+        MatrixSVD A\A_m:=n*2\A_n:=12,U,W,V\econ;
+        !Form projection matrix using singular column of V
+        IF present(print) THEN
+            Write logfile,"W=";
+            FOR i FROM 1 TO 12 DO
+                Write logfile,""\Dnum:=W{i};
+            ENDFOR
+            Write logfile,"V=";
+            FOR i FROM 1 TO 12 DO
+                FOR j FROM 1 TO 11 DO
+                    Write logfile,""\Dnum:=V{i,j}\NoNewLine;
+                    Write logfile,","\NoNewLine;
+                ENDFOR
+                Write logfile,""\Dnum:=V{i,12};
+            ENDFOR
+        ENDIF
+        !Find smallest singular value
+        minW:=9e9;
+        FOR i FROM 1 TO 12 DO
+            IF W{i}<minW THEN
+                minW:=W{i};
+                minWidx:=i;
+            ENDIF
+        ENDFOR
+        !P:=[[-V{1,minWidx},-V{2,minWidx},-V{3,minWidx},-V{4,minWidx}],[-V{5,minWidx},-V{6,minWidx},-V{7,minWidx},-V{8,minWidx}],[-V{9,minWidx},-V{10,minWidx},-V{11,minWidx},-V{12,minWidx}]];
+        P:=[[V{1,minWidx},V{2,minWidx},V{3,minWidx},V{4,minWidx}],[V{5,minWidx},V{6,minWidx},V{7,minWidx},V{8,minWidx}],[V{9,minWidx},V{10,minWidx},V{11,minWidx},V{12,minWidx}]];
+        Scale_robPos:=[[1/srobPos{1},0,0,-trobPos{1}/srobPos{1}],[0,1/srobPos{2},0,-trobPos{2}/srobPos{2}],[0,0,1/srobPos{3},-trobPos{3}/srobPos{3}],[0,0,0,1]];
+        Scale_camPos:=[[1/scamPos{1},0,-tcamPos{1}/scamPos{1}],[0,1/scamPos{2},-tcamPos{2}/scamPos{2}],[0,0,1]];
+        MatrixMultiplyDnum P,Scale_robPos,result4;
+        status:=invert3DMatrix(Scale_camPos,result3);
+        MatrixMultiplyDnum result3,result4,P;
+        abs_lambda:=SqrtDnum(P{3,1}*P{3,1}+P{3,2}*P{3,2}+P{3,3}*P{3,3});
+        !Scale P with the scale factor
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 4 DO
+                P{i,j}:=P{i,j}/abs_lambda;
+            ENDFOR
+        ENDFOR
+        IF present(print) THEN
+            Write logfile,"P=";
+            FOR i FROM 1 TO 3 DO
+                FOR j FROM 1 TO 3 DO
+                    Write logfile,""\Dnum:=P{i,j}\NoNewLine;
+                    Write logfile,","\NoNewLine;
+                ENDFOR
+                Write logfile,""\Dnum:=P{i,4};
+            ENDFOR
+        ENDIF
+
+        status:=PMatDecompQR(P,K,Kinv,camR,camT,1);
+        signChecks:=0;
+        WHILE signChecks<2 DO
+            p1.x:=dnumtonum(camR{1,1});
+            p1.y:=dnumtonum(camR{2,1});
+            p1.z:=dnumtonum(camR{3,1});
+            p2.x:=dnumtonum(camR{1,2});
+            p2.y:=dnumtonum(camR{2,2});
+            p2.z:=dnumtonum(camR{3,2});
+            p3.x:=dnumtonum(camR{1,3});
+            p3.y:=dnumtonum(camR{2,3});
+            p3.z:=dnumtonum(camR{3,3});
+            camTrob.rot:=vec2quat(p1,p2,p3);
+            camTrob.trans:=[dnumtonum(camT{1,1}),dnumtonum(camT{2,1}),dnumtonum(camT{3,1})];
+
+            !Check if "pixel" values match x,y axis of camera wobj
+            p1:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{1,1}),dnumtonum(robPos{1,2}),dnumtonum(robPos{1,3})]);
+            p2:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{2,1}),dnumtonum(robPos{2,2}),dnumtonum(robPos{2,3})]);
+            p3:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{3,1}),dnumtonum(robPos{3,2}),dnumtonum(robPos{3,3})]);
+            p1.z:=0;
+            p2.z:=0;
+            p3.z:=0;
+            d12:=DotProd(NormalizePos(p2-p1),NormalizePos([dnumtonum(camPos{2,1}),dnumtonum(camPos{2,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
+            d13:=DotProd(NormalizePos(p3-p1),NormalizePos([dnumtonum(camPos{3,1}),dnumtonum(camPos{3,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
+            !0.05 for poorly calibrated robot, 0.01 for properly calibrated robot
+            IF Present(HandHeldCamera) THEN
+                Zsign:=-1;
+            ELSE
+                Zsign:=1;
+            ENDIF
+
+            IF abs(d12-Zsign)>0.05 OR abs(d13-Zsign)>0.05 THEN
+                !Axes do not match, redo pMatDecomp with reversed Z sign
+                IF signChecks=0 status:=PMatDecompQR(P,K,Kinv,camR,camT,-1);
+                Incr signChecks;
+            ELSE
+                !Signs are OK, break loop
+                signChecks:=10;
+            ENDIF
+
+        ENDWHILE
+        IF signChecks=2 THEN
+            ErrWrite "Error in CalibIntrinsic","unable to match signs in CalibIntrinsic";
+            Stop;
+        ENDIF
+        !MatrixMultiplyDnum camR,result3,camR;
+        IF present(print) THEN
+            Write logfile,"camR=";
+            FOR i FROM 1 TO 3 DO
+                FOR j FROM 1 TO 2 DO
+                    Write logfile,""\Dnum:=camR{i,j}\NoNewLine;
+                    Write logfile,","\NoNewLine;
+                ENDFOR
+                Write logfile,""\Dnum:=camR{i,3};
+            ENDFOR
+        ENDIF
+        !Calculate back projection error
+        IF present(print) THEN
+            Write logfile,"Back Projection Error=";
+            FOR i FROM 1 TO n DO
+                MatrixMultiplyDnum P,[[robPosErr{i,1}],[robPosErr{i,2}],[robPosErr{i,3}],[1]],tmp3;
+                tmp3{1,1}:=tmp3{1,1}/tmp3{3,1};
+                tmp3{2,1}:=tmp3{2,1}/tmp3{3,1};
+                errPos:=[dnumtonum(tmp3{1,1}-camPosErr{i,1}),dnumtonum(tmp3{2,1}-camPosErr{i,2}),0];
+                Write logfile,""\pos:=errPos;
+            ENDFOR
+        ENDIF
+        !Check that PmatdecompQR return values indeed compose P, P=K*[R t]
+        IF present(print) THEN
+            MatrixMultiplyDnum K,[[camR{1,1},camR{1,2},camR{1,3},camT{1,1}],[camR{2,1},camR{2,2},camR{2,3},camT{2,1}],[camR{3,1},camR{3,2},camR{3,3},camT{3,1}]],P_test;
+            Write logfile,"P Error=";
+            FOR i FROM 1 TO 3 DO
+                Write logfile,"["+numtostr(dnumtonum(P{i,1}-P_test{i,1}),3)+","+numtostr(dnumtonum(P{i,2}-P_test{i,2}),3)+","+numtostr(dnumtonum(P{i,3}-P_test{i,3}),3)+","+numtostr(dnumtonum(P{i,4}-P_test{i,4}),3)+"]";
+            ENDFOR
+        ENDIF
+        Close logfile;
+        robTcam:=PoseInv(camTrob);
+        RETURN status;
+    ENDFUNC
+
+    !/******************************* CalibWobjAndTool ****************************
+    !*Calculates the camera wobj and robot tool, based on a sequence of robtargets and corresponding camera measurements
+    !*robPos is expressed in calwobj
+    !*robPos{1}-robPos{3}  pure translation in calwobj xy plane
+    !*robPos{4}-robPos{5}  rotation about calwobj z axis
+    !*robPos{6}        rotation about calwobj y axis
+    !*robPos{7}-robPos{8}  Same orentation as robPos{6}, translated parallel to calwobj xy plane
+    !*robPos{9}        rotation about calwobj y axis
+    !*robPos{10}-robPos{11}  Same orentation as robPos{9}, translated parallel to calwobj xy plane
+    !*K, dnum K{3,3} is the intrinsic matrix of the camera
+    !*Kinv, dnum Kinv{3,3} is the inverse of K
+    !****************************************************************************
+    FUNC bool CalibWobjAndTool(pose robPose{*},pos camPos{*},num Kinv{*,*},VAR pos calcWobj,VAR pos calcTcp,\switch HandHeldCamera,\pose cameraFrame,\pose toolFrame)
+        !%Check that the wobj plane has constant camera scale
+        VAR num h1:=0;
+        VAR num h2:=0;
+        VAR num h3:=0;
+        VAR num hp;
+        VAR num h_res{3,1};
+        VAR num hc;
+        VAR pose camPose{11};
+        VAR pose RobPosePairsTcp{3};
+        VAR pose CamPosePairsTcp{3};
+        VAR pose RobPosePairsWobj{3};
+        VAR pose CamPosePairsWobj{3};
+        VAR num RobPoseTransform{4,4};
+        VAR num CamPoseTransform{4,4};
+        VAR num mA{9,3};
+        VAR num mb{9};
+        VAR dnum dmA{9,3};
+        VAR dnum dmb{9};
+        VAR dnum dmAxy{2,2};
+        VAR dnum dmbxy{2};
+        VAR dnum W{3};
+        VAR dnum V{3,3};
+        VAR dnum tmp{9};
+        VAR dnum tcp{3};
+        VAR dnum twobj{3};
+        VAR dnum twobjxy{2};
+        VAR bool status;
+        VAR iodev logfile;
+        VAR pose calwobjTcalplate;
+        VAR num dPairs{3,2};
+        VAR num hx{3};
+        VAR num hy{3};
+        VAR num drx{3};
+        VAR num dry{3};
+        VAR num dcx;
+        VAR num dcy;
+        VAR num pcam{3,1};
+        VAR pose corrFrame;
+        VAR pos t;
+        VAR pos u;
+        VAR string mString;
+        !VAR num L;
+        !VAR num Lh;
+        !Calculate the average height for depth estimation
+        FOR i FROM 1 TO 11 DO
+            robPose{i}:=PoseMult(PoseMult(robPose{i},PoseInv(toolFrame)),cameraFrame);
+        ENDFOR
+        !corrFrame:=robPose{1};
+        !FOR i FROM 1 TO 3 DO
+        !    robPose{i}:=PoseMult(PoseInv(corrFrame),robPose{i});
+        !ENDFOR
+        dPairs:=[[2,1],[3,1],[3,2]];
+        mString:="h1 = ";
+        FOR i FROM 1 TO 3 DO
+            t:=robPose{dPairs{i,1}}.trans-robPose{dPairs{i,2}}.trans;
+            u:=camPos{dPairs{i,1}}-camPos{dPairs{i,2}};
+            MatrixMultiply Kinv,[[u.x],[u.y],[0]],h_res;
+            u:=[h_res{1,1},h_res{2,1},h_res{3,1}];
+            mString:=mString+NumtoStr(VectMagn(t)/VectMagn(u),2)+", ";
+            h1:=h1+VectMagn(t)/VectMagn(u);
+        ENDFOR
+        h1:=h1/3;
+        TPWrite mString;
+        !FOR i FROM 1 TO 3 DO
+        !    robPose{i}:=PoseMult(corrFrame,robPose{i});
+        !ENDFOR
+
+        !corrFrame:=robPose{6};
+        !FOR i FROM 6 TO 8 DO
+        !    robPose{i}:=PoseMult(PoseInv(corrFrame),robPose{i});
+        !ENDFOR
+        dPairs:=[[7,6],[8,6],[8,7]];
+        mString:="h2 = ";
+        FOR i FROM 1 TO 3 DO
+            t:=robPose{dPairs{i,1}}.trans-robPose{dPairs{i,2}}.trans;
+            u:=camPos{dPairs{i,1}}-camPos{dPairs{i,2}};
+
+            MatrixMultiply Kinv,[[u.x],[u.y],[0]],h_res;
+            u:=[h_res{1,1},h_res{2,1},h_res{3,1}];
+            mString:=mString+NumtoStr(VectMagn(t)/VectMagn(u),2)+", ";
+            h2:=h2+VectMagn(t)/VectMagn(u);
+        ENDFOR
+        h2:=h2/3;
+        TPWrite mString;
+        !FOR i FROM 6 TO 8 DO
+        !    robPose{i}:=PoseMult(corrFrame,robPose{i});
+        !ENDFOR
+
+        !corrFrame:=robPose{9};
+        !FOR i FROM 9 TO 11 DO
+        !    robPose{i}:=PoseMult(PoseInv(corrFrame),robPose{i});
+        !ENDFOR
+        dPairs:=[[10,9],[11,9],[11,10]];
+        mString:="h3 = ";
+        FOR i FROM 1 TO 3 DO
+            t:=robPose{dPairs{i,1}}.trans-robPose{dPairs{i,2}}.trans;
+            u:=camPos{dPairs{i,1}}-camPos{dPairs{i,2}};
+
+            MatrixMultiply Kinv,[[u.x],[u.y],[0]],h_res;
+            u:=[h_res{1,1},h_res{2,1},h_res{3,1}];
+            mString:=mString+NumtoStr(VectMagn(t)/VectMagn(u),2)+", ";
+            h3:=h3+VectMagn(t)/VectMagn(u);
+        ENDFOR
+        h3:=h3/3;
+        TPWrite mString;
+        !FOR i FROM 9 TO 11 DO
+        !    robPose{i}:=PoseMult(corrFrame,robPose{i});
+        !ENDFOR
+
+        !%Backscale 2D camera measurements to 3D
+        FOR i FROM 1 TO 5 DO
+            camPose{i}:=PoseInv(robPose{i});
+            pcam:=[[camPos{i}.x],[camPos{i}.y],[1]];
+            MatrixMultiply Kinv,pcam,pcam;
+            camPose{i}.trans.x:=pcam{1,1}*h1;
+            camPose{i}.trans.y:=pcam{2,1}*h1;
+            camPose{i}.trans.z:=h1;
+        ENDFOR
+        FOR i FROM 6 TO 8 DO
+            camPose{i}:=PoseInv(robPose{i});
+            pcam:=[[camPos{i}.x],[camPos{i}.y],[1]];
+            MatrixMultiply Kinv,pcam,pcam;
+            camPose{i}.trans.x:=pcam{1,1}*h2;
+            camPose{i}.trans.y:=pcam{2,1}*h2;
+            camPose{i}.trans.z:=h2;
+        ENDFOR
+        FOR i FROM 9 TO 11 DO
+            camPose{i}:=PoseInv(robPose{i});
+            pcam:=[[camPos{i}.x],[camPos{i}.y],[1]];
+            MatrixMultiply Kinv,pcam,pcam;
+            camPose{i}.trans.x:=pcam{1,1}*h3;
+            camPose{i}.trans.y:=pcam{2,1}*h3;
+            camPose{i}.trans.z:=h3;
+        ENDFOR
+
+        FOR i FROM 1 TO 11 DO
+            robPose{i}:=PoseMult(PoseMult(robPose{i},PoseInv(cameraFrame)),toolFrame);
+        ENDFOR
+        cameraFrame.trans:=[0,0,0];
+        IF Present(HandHeldCamera) THEN
+            !%Generate corresponding pairs from movements
+            RobPosePairsTcp{1}:=PoseMult(PoseInv(robPose{5}),robPose{4});
+            RobPosePairsTcp{2}:=PoseMult(PoseInv(robPose{1}),robPose{5});
+            RobPosePairsTcp{3}:=PoseMult(PoseInv(robPose{9}),robPose{6});
+            CamPosePairsTcp{1}:=PoseMult(cameraFrame,PoseMult((camPose{5}),PoseInv(camPose{4})));
+            CamPosePairsTcp{2}:=PoseMult(cameraFrame,PoseMult((camPose{1}),PoseInv(camPose{5})));
+            CamPosePairsTcp{3}:=PoseMult(cameraFrame,PoseMult((camPose{9}),PoseInv(camPose{6})));
+            RobPosePairsWobj{1}:=PoseMult(robPose{5},PoseInv(robPose{4}));
+            RobPosePairsWobj{2}:=PoseMult(robPose{1},PoseInv(robPose{5}));
+            RobPosePairsWobj{3}:=PoseMult(robPose{9},PoseInv(robPose{6}));
+            CamPosePairsWobj{1}:=PoseMult(PoseInv(camPose{5}),(camPose{4}));
+            CamPosePairsWobj{2}:=PoseMult(PoseInv(camPose{1}),(camPose{5}));
+            CamPosePairsWobj{3}:=PoseMult(PoseInv(camPose{9}),(camPose{6}));
+        ELSE
+            !%Generate corresponding pairs from movements
+            RobPosePairsTcp{1}:=PoseMult(PoseInv(robPose{5}),robPose{4});
+            RobPosePairsTcp{2}:=PoseMult(PoseInv(robPose{1}),robPose{5});
+            RobPosePairsTcp{3}:=PoseMult(PoseInv(robPose{9}),robPose{6});
+            CamPosePairsTcp{1}:=PoseMult(PoseInv(camPose{5}),camPose{4});
+            CamPosePairsTcp{2}:=PoseMult(PoseInv(camPose{1}),camPose{5});
+            CamPosePairsTcp{3}:=PoseMult(PoseInv(camPose{9}),camPose{6});
+            RobPosePairsWobj{1}:=PoseMult(robPose{5},PoseInv(robPose{4}));
+            RobPosePairsWobj{2}:=PoseMult(robPose{1},PoseInv(robPose{5}));
+            RobPosePairsWobj{3}:=PoseMult(robPose{9},PoseInv(robPose{6}));
+            CamPosePairsWobj{1}:=PoseMult(camPose{5},PoseInv(camPose{4}));
+            CamPosePairsWobj{2}:=PoseMult(camPose{1},PoseInv(camPose{5}));
+            CamPosePairsWobj{3}:=PoseMult(camPose{9},PoseInv(camPose{6}));
+        ENDIF
+        !Generate least squares equation system
+        FOR i FROM 1 TO 3 DO
+            posetoxform RobPosePairsTcp{i},RobPoseTransform;
+            posetoxform CamPosePairsTcp{i},CamPoseTransform;
+            mA{i*3-2,1}:=RobPoseTransform{1,1}-1;
+            mA{i*3-2,2}:=RobPoseTransform{1,2};
+            mA{i*3-2,3}:=RobPoseTransform{1,3};
+            mA{i*3-1,1}:=RobPoseTransform{2,1};
+            mA{i*3-1,2}:=RobPoseTransform{2,2}-1;
+            mA{i*3-1,3}:=RobPoseTransform{2,3};
+            mA{i*3,1}:=RobPoseTransform{3,1};
+            mA{i*3,2}:=RobPoseTransform{3,2};
+            mA{i*3,3}:=RobPoseTransform{3,3}-1;
+            mb{i*3-2}:=CamPoseTransform{1,4}-RobPoseTransform{1,4};
+            mb{i*3-1}:=CamPoseTransform{2,4}-RobPoseTransform{2,4};
+            mb{i*3}:=CamPoseTransform{3,4}-RobPoseTransform{3,4};
+        ENDFOR
+        !Convert to dnum
+        FOR i FROM 1 TO 9 DO
+            FOR j FROM 1 TO 3 DO
+                dmA{i,j}:=numtodnum(mA{i,j});
+            ENDFOR
+            dmb{i}:=numtodnum(mb{i});
+        ENDFOR
+
+        !Solve for tool coordinates
+        MatrixSolve dmA\A_m:=9\A_n:=3,dmb,tcp;
+
+        FOR i FROM 1 TO 3 DO
+            posetoxform RobPosePairsWobj{i},RobPoseTransform;
+            posetoxform CamPosePairsWobj{i},CamPoseTransform;
+            mA{i*3-2,1}:=RobPoseTransform{1,1}-1;
+            mA{i*3-2,2}:=RobPoseTransform{1,2};
+            mA{i*3-2,3}:=RobPoseTransform{1,3};
+            mA{i*3-1,1}:=RobPoseTransform{2,1};
+            mA{i*3-1,2}:=RobPoseTransform{2,2}-1;
+            mA{i*3-1,3}:=RobPoseTransform{2,3};
+            mA{i*3,1}:=RobPoseTransform{3,1};
+            mA{i*3,2}:=RobPoseTransform{3,2};
+            mA{i*3,3}:=RobPoseTransform{3,3}-1;
+            mb{i*3-2}:=CamPoseTransform{1,4}-RobPoseTransform{1,4};
+            mb{i*3-1}:=CamPoseTransform{2,4}-RobPoseTransform{2,4};
+            mb{i*3}:=CamPoseTransform{3,4}-RobPoseTransform{3,4};
+        ENDFOR
+        !Convert to dnum
+        FOR i FROM 1 TO 9 DO
+            FOR j FROM 1 TO 3 DO
+                dmA{i,j}:=numtodnum(mA{i,j});
+            ENDFOR
+            dmb{i}:=numtodnum(mb{i});
+        ENDFOR
+        dmAxy:=[[dmA{1,1},dmA{1,2}],[dmA{2,1},dmA{2,2}]];
+        dmbxy:=[dmb{1},dmb{2}];
+
+        !Solve for Wobj coordinates
+        MatrixSolve dmA\A_m:=9\A_n:=3,dmb,twobj;
+
+        calcWobj.x:=dnumtonum(twobj{1});
+        calcWobj.y:=dnumtonum(twobj{2});
+        calcWobj.z:=dnumtonum(twobj{3});
+        calcTcp.x:=dnumtonum(tcp{1});
+        calcTcp.y:=dnumtonum(tcp{2});
+        calcTcp.z:=dnumtonum(tcp{3});
+        RETURN TRUE;
+    ENDFUNC
+
+    !/******************************* CalibCamera ****************************
+    !*Calculates the camera wobj and robot tool, based on a sequence of robtargets and corresponding camera measurements
+    !*robT{5} should concist of 5 robTargets. robT{1}-robT{4} should be pure translation in a plane perpendicular to the
+    !*camera axis. robT{5} should be an elevated point in the direction of the camera.
+    !*robT should be expressed in the robot base frame
+    !****************************************************************************
+    PROC CalibCamera(robtarget robT{*},
+        PERS tooldata tool,
+        VAR pose cameraFrame,
+        VAR pos markerPos,
+        VAR CameraDev CameraToUse,
+        \PERS num Kinv{*,*},
+        \PERS num K{*,*},
+        \num camMeasurement1{*,*},
+        \num camMeasurement2{*,*},
+        \num camMeasurement3{*,*},
+        \switch print,
+        \switch HandHeldCamera)
+
+        VAR pose robTstartFrame;
+        VAR pose startFrameTcalwobj;
+        VAR pose robTcalwobj;
+        VAR pose mPose;
+        VAR pos mPos;
+        VAR pose robTcam;
+        VAR num zoffset;
+        VAR robtarget mRobTarget;
+        VAR dnum dK{3,3};
+        VAR dnum dKinv{3,3};
+        VAR num nK{3,3};
+        VAR num nKinv{3,3};
+        VAR bool status;
+        VAR pose robTcalplate;
+        VAR pos Ttcp;
+        VAR pos Twobj;
+        VAR iodev logfile;
+        VAR num nPick_Value{3};
+        VAR pose robPose{calibcameraPoints};
+        VAR pos camPos{calibcameraPoints};
+        VAR dnum drobPos{calibcameraPoints,3};
+        VAR dnum dcamPos{calibcameraPoints,2};
+        VAR num npoints:=calibcameraPoints;
+        VAR jointtarget mJT;
+        VAR pose pc;
+        VAR num pcam{3,1};
+        VAR pose midPose_rob;
+        VAR pose midPose_calwobj;
+        VAR num ErrRobBase{11};
+        VAR num ErrCam{11};
+        VAR jointtarget currentJT;
+        VAR string taskname;
+        VAR num nNoOffPicture;
+        VAR pos CameraResult;
+        VAR pos sPos1;
+        VAR pos sPos2;
+        VAR pose calib_robPose{calibcameraPoints+11};
+        VAR pos calib_camPos{calibcameraPoints+11};
+
+        !All orientations in RobT must be the same, use orientation from the first RobT
+        FOR i FROM 2 TO 5 DO
+            robT{i}.rot:=robT{1}.rot;
+        ENDFOR
+        robTstartFrame:=DefFrame(robT{1},robT{2},robT{3});
+        !Ensure that startFrame z axis point toward camera, the direction is given by robT{5}
+        robPose{5}.trans:=robT{5}.trans;
+        robPose{5}.rot:=robT{5}.rot;
+        robPose{5}:=PoseMult(PoseInv(robTstartFrame),robPose{5});
+        IF robPose{5}.trans.z>0 THEN
+            !Swap point 2 and 3 to get p5.z negative
+            mRobTarget:=robT{3};
+            robT{3}:=robT{2};
+            robT{2}:=mRobTarget;
+            robTstartFrame:=DefFrame(robT{1},robT{2},robT{3});
+        ENDIF
+        !Transform the points to startFrame
+        FOR i FROM 1 TO 5 DO
+            robPose{i}.trans:=robT{i}.trans;
+            robPose{i}.rot:=robT{i}.rot;
+            robPose{i}:=PoseMult(PoseInv(robTstartFrame),robPose{i});
+        ENDFOR
+        IF abs(robPose{5}.trans.z)<50 THEN
+            robPose{5}.trans.z:=sign(robPose{5}.trans.z)*50;
+        ENDIF
+        zoffset:=robPose{5}.trans.z;
+
+        !Add midpoint in first plane
+        robPose{5}:=robPose{1};
+        robPose{5}.trans.x:=(robPose{1}.trans.x+robPose{2}.trans.x+robPose{3}.trans.x+robPose{4}.trans.x)/4;
+        robPose{5}.trans.y:=(robPose{1}.trans.y+robPose{2}.trans.y+robPose{3}.trans.y+robPose{4}.trans.y)/4;
+        FOR i FROM 6 TO 10 DO
+            robPose{i}:=robPose{i-5};
+            robPose{i}.trans.z:=zoffset;
+        ENDFOR
+        FOR i FROM 11 TO 15 DO
+            robPose{i}:=robPose{i-5};
+            robPose{i}.trans.z:=zoffset/2;
+        ENDFOR
+
+        midPose_rob:=PoseMult(robTstartFrame,robPose{15});
+        calwobj.uframe:=robTstartFrame;
+        !Move to targets
+        SingArea\Wrist;
+        FOR i FROM 1 TO npoints DO
+            mRobTarget.trans:=robPose{i}.trans;
+            mRobTarget.rot:=robPose{i}.rot;
+            mRobTarget.extax.eax_a:=robT{1}.extax.eax_a;
+            mRobTarget.robconf:=[0,0,0,11];
+
+            IF RobOS() THEN
+                MoveL mRobTarget,v100,fine,tool\Wobj:=calwobj;
+            ELSE
+                !Running on VC
+                IF i=1 THEN
+                    mJT:=CalcJointT(mRobTarget,tool\Wobj:=calwobj);
+                    MoveAbsJ mJT,v100,fine,tool\Wobj:=calwobj;
+                ELSE
+                    MoveL mRobTarget,v100,fine,tool\Wobj:=calwobj;
+                    !ResetReferenceDirection;
+                    !MoveJ mRobTarget,v100,fine,tool\Wobj:=calwobj;
+                ENDIF
+            ENDIF
+            WaitTime\InPos,0.5;
+            !Take Picture
+            IF RobOS() THEN
+                Clear nNoOffPicture;
+                WHILE nNoOffPicture<10 DO
+                    CameraResult:=RequestImageAndGetResult(CameraToUse);
+                    IF CameraResult=[0,0,0] THEN
+                        Incr nNoOffPicture;
+                        TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
+                        !Stop;
+                    ELSE
+                        !Picture is ok, break loop
+                        nNoOffPicture:=10;
+                    ENDIF
+                    IF nNoOffPicture=3 THEN
+                        Clear nNoOffPicture;
+                        Calibrated:=2;
+                        Stop;
+                    ENDIF
+                ENDWHILE
+                !camPos{i}.x:=nPick_Value{1};
+                !camPos{i}.y:=nPick_Value{2};
+                camPos{i}.x:=CameraResult.x;
+                camPos{i}.y:=CameraResult.y;
+            ELSE
+                !running on a VC
+                IF present(camMeasurement1) THEN
+                    camPos{i}.x:=camMeasurement1{i,1};
+                    camPos{i}.y:=camMeasurement1{i,2};
+                ENDIF
+            ENDIF
+        ENDFOR
+
+        FOR i FROM 1 TO npoints DO
+            !Convert positions to robF
+            robPose{i}:=PoseMult(calwobj.uframe,robPose{i});
+            drobPos{i,1}:=numtodnum(robPose{i}.trans.x);
+            drobPos{i,2}:=numtodnum(robPose{i}.trans.y);
+            drobPos{i,3}:=numtodnum(robPose{i}.trans.z);
+            dcamPos{i,1}:=numtodnum(camPos{i}.x);
+            dcamPos{i,2}:=numtodnum(camPos{i}.y);
+            calib_robPose{i}:=robPose{i};
+            calib_camPos{i}:=camPos{i};
+        ENDFOR
+        taskname:=StrPart(GetTaskName(),2,5);
+        !Print robot positions and camera measurements
+        Open "HOME:"\File:="logCalibCamera"+taskname+".txt",logfile\Write;
+        Write logfile,"robTstartFrame=["\Pos:=robTstartFrame.trans\NoNewLine;
+        Write logfile,","\Orient:=robTstartFrame.rot\NoNewLine;
+        Write logfile,"]";
+        Write logfile,"RobotPosCalibIntrinsic=["\NoNewLine;
+        FOR i FROM 1 TO npoints DO
+            FOR j FROM 1 TO 3 DO
+                Write logfile,""\Dnum:=drobPos{i,j}\NoNewLine;
+                IF j=3 AND i<npoints THEN
+                    Write logfile,";";
+                ELSE
+                    Write logfile,","\NoNewLine;
+                ENDIF
+            ENDFOR
+        ENDFOR
+        Write logfile,"]";
+        Write logfile,"CameraPosCalibIntrinsic=["\NoNewLine;
+        FOR i FROM 1 TO npoints DO
+            Write logfile,""\Dnum:=dcamPos{i,1}\NoNewLine;
+            Write logfile,","\Dnum:=dcamPos{i,2}\NoNewLine;
+            IF i<npoints Write logfile,";";
+        ENDFOR
+        Write logfile,"]";
+        status:=CalibIntrinsic(drobPos,dcamPos,npoints,robTcam,dK,dKinv\print?print,\HandHeldCamera?HandHeldCamera);
+        !Refine calibration result with non linear optimization, including distortion
+        !CalibIntNonLin drobPos,dcamPos,npoints,robTcam,dK;
+        IF Present(HandHeldCamera) THEN
+            cameraFrame:=PoseMult(PoseInv([robT{1}.trans,robT{1}.rot]),robTcam);
+            !RETURN;
+        ENDIF
+        !startFrameTcalwobj.rot:=robTcam.rot;
+        !startFrameTcalwobj.trans:=[0,0,0];
+        robTcalwobj.rot:=robTcam.rot;
+        robTcalwobj.trans:=midPose_rob.trans;
+        calwobj:=wobj0;
+        calwobj.uframe:=robTcalwobj;
+
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 3 DO
+                nKinv{i,j}:=dnumtonum(dKinv{i,j});
+                nK{i,j}:=dnumtonum(dK{i,j});
+            ENDFOR
+        ENDFOR
+        !stop;
+
+        !Now calculate the points needed to identify the camera wobj and tool
+        FOR i FROM 1 TO 3 DO
+            robPose{i}.trans:=robT{i}.trans;
+            robPose{i}.rot:=robT{i}.rot;
+        ENDFOR
+        !Project the robot positions 1-3 on calwobj by removing the Z component
+        robPose{1}:=PoseMult(PoseInv(robTcalwobj),robPose{1});
+        robPose{2}:=PoseMult(PoseInv(robTcalwobj),robPose{2});
+        robPose{3}:=PoseMult(PoseInv(robTcalwobj),robPose{3});
+        sPos1:=(robPose{1}.trans-robPose{2}.trans)*0.8;
+        sPos2:=(robPose{1}.trans-robPose{3}.trans)*0.8;
+        midPose_calwobj:=PoseMult(PoseInv(robTcalwobj),midPose_rob);
+        robPose{1}.trans.z:=0;
+        robPose{2}.trans.z:=0;
+        robPose{3}.trans.z:=0;
+        !Rotate about calwobj z-axis, (use a tool with 65 mm z offset as start guess)
+        mPose.trans:=[0,0,0];
+        mPose.rot:=OrientZYX(10,0,0);
+        robPose{4}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],midPose_calwobj.rot]));
+        mPose.rot:=OrientZYX(-10,0,0);
+        robPose{5}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],midPose_calwobj.rot]));
+        !robPose{5}:=PoseMult(mPose,robPose{1});
+        !Rotate about calwobj y-axis
+        IF Present(HandHeldCamera) THEN
+            mPose.rot:=OrientZYX(0,10,0);
+            robPose{6}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],midPose_calwobj.rot]));
+            robPose{6}:=PoseMult(robPose{6},PoseMult(PoseInv(tool.tframe),cameraFrame));
+            robPose{7}:=PoseMult(robPose{6},[sPos1,[1,0,0,0]]);
+            robPose{8}:=PoseMult(robPose{6},[sPos2,[1,0,0,0]]);
+            !Now back to tool
+            robPose{6}:=PoseMult(robPose{6},PoseMult(PoseInv(cameraFrame),tool.tframe));
+            robPose{7}:=PoseMult(robPose{7},PoseMult(PoseInv(cameraFrame),tool.tframe));
+            robPose{8}:=PoseMult(robPose{8},PoseMult(PoseInv(cameraFrame),tool.tframe));
+        ELSE
+            mPose.rot:=OrientZYX(0,10,0);
+            robPose{6}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],midPose_calwobj.rot]));
+            robPose{7}:=robPose{6};
+            robPose{7}.trans.x:=robPose{2}.trans.x;
+            robPose{7}.trans.y:=robPose{2}.trans.y;
+            robPose{8}:=robPose{6};
+            robPose{8}.trans.x:=robPose{3}.trans.x;
+            robPose{8}.trans.y:=robPose{3}.trans.y;
+        ENDIF
+
+        IF Present(HandHeldCamera) THEN
+            mPose.rot:=OrientZYX(0,-10,0);
+            robPose{9}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],midPose_calwobj.rot]));
+            robPose{9}:=PoseMult(robPose{9},PoseMult(PoseInv(tool.tframe),cameraFrame));
+            robPose{10}:=PoseMult(robPose{9},[sPos1,[1,0,0,0]]);
+            robPose{11}:=PoseMult(robPose{9},[[-sPos2.x,sPos2.y,0],[1,0,0,0]]);
+            !Now back to tool
+            robPose{9}:=PoseMult(robPose{9},PoseMult(PoseInv(cameraFrame),tool.tframe));
+            robPose{10}:=PoseMult(robPose{10},PoseMult(PoseInv(cameraFrame),tool.tframe));
+            robPose{11}:=PoseMult(robPose{11},PoseMult(PoseInv(cameraFrame),tool.tframe));
+        ELSE
+            mPose.rot:=OrientZYX(0,-10,0);
+            !robPose{6}:=PoseMult(mPose,robPose{1});
+            robPose{9}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],midPose_calwobj.rot]));
+            robPose{10}:=robPose{9};
+            robPose{10}.trans.x:=robPose{2}.trans.x;
+            robPose{10}.trans.y:=robPose{2}.trans.y;
+            robPose{11}:=robPose{9};
+            robPose{11}.trans.x:=robPose{3}.trans.x;
+            robPose{11}.trans.y:=robPose{3}.trans.y;
+        ENDIF
+        !Express the poses in robot base frame
+        FOR i FROM 1 TO 11 DO
+            robPose{i}:=PoseMult(calwobj.uframe,robPose{i});
+        ENDFOR
+        !Now generate robtargets for the calibration points and move the robot to the targets
+        !take camera measurements
+        FOR i FROM 1 TO 11 DO
+            begin:
+            mRobTarget.trans:=robPose{i}.trans;
+            mRobTarget.rot:=robPose{i}.rot;
+            mRobTarget.extax.eax_a:=robT{1}.extax.eax_a;
+            mRobTarget.robconf:=[0,0,0,11];
+
+            !MoveL mRobTarget,v100,fine,tool\Wobj:=calwobj;
+            MoveL mRobTarget,v100,fine,tool\Wobj:=wobj0;
+            !Take Picture if RC
+            WaitTime\InPos,0.5;
+            IF RobOS() THEN
+                Clear nNoOffPicture;
+                WHILE nNoOffPicture<10 DO
+                    CameraResult:=RequestImageAndGetResult(CameraToUse);
+                    !Stop;
+                    IF CameraResult=[0,0,0] THEN
+                        Incr nNoOffPicture;
+                        !Remove some portion of the last movement to get back in view
+                        robPose{i}.trans:=robPose{i-1}.trans+(robPose{i}.trans-robPose{i-1}.trans)*0.9;
+                        !TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
+                        TPWrite "Marker not found, shortening movemnt!";
+                        !Stop;
+                        GOTO begin;
+                    ELSE
+                        !Picture is ok, break loop
+                        nNoOffPicture:=10;
+                    ENDIF
+                    IF nNoOffPicture=3 THEN
+                        Clear nNoOffPicture;
+                        Calibrated:=2;
+                        Stop;
+                    ENDIF
+                ENDWHILE
+                !camPos{i}.x:=nPick_Value{1};
+                !camPos{i}.y:=nPick_Value{2};
+                camPos{i}.x:=CameraResult.x;
+                camPos{i}.y:=CameraResult.y;
+            ELSE
+                !Running on a VC
+                camPos{i}.x:=camMeasurement2{i,1};
+                camPos{i}.y:=camMeasurement2{i,2};
+            ENDIF
+        ENDFOR
+        Write logfile,"RobotPoseCalibWobjandTool_FirstPass=["\NoNewLine;
+        FOR i FROM 1 TO 11 DO
+            Write logfile,"["\pos:=robPose{i}.trans\NoNewLine;
+            Write logfile,","\orient:=robPose{i}.rot\NoNewLine;
+            Write logfile,"]"\NoNewLine;
+            IF i<11 Write logfile,";";
+        ENDFOR
+        Write logfile,"]";
+        Write logfile,"CameraPosCalibWobjandTool_FirstPass=["\NoNewLine;
+        FOR i FROM 1 TO 11 DO
+            Write logfile,""\pos:=camPos{i}\NoNewLine;
+            IF i<11 Write logfile,";";
+        ENDFOR
+        Write logfile,"]";
+        Write logfile,"CalibWobjandTool_Kinv=["\NoNewLine;
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 3 DO
+                Write logfile," "\Num:=nKinv{i,j}\NoNewLine;
+            ENDFOR
+            IF i<3 Write logfile,"";
+        ENDFOR
+        Write logfile,"];";
+        Write logfile,"CalibWobjandTool_cameraFrame=["\NoNewLine;
+        Write logfile,"["\pos:=cameraFrame.trans\NoNewLine;
+        Write logfile,","\orient:=cameraFrame.rot\NoNewLine;
+        Write logfile,"];";
+        Write logfile,"CalibWobjandTool_toolFrame=["\NoNewLine;
+        Write logfile,"["\pos:=tool.tframe.trans\NoNewLine;
+        Write logfile,","\orient:=tool.tframe.rot\NoNewLine;
+        Write logfile,"];";
+        !Now calculate the camera wobj and tool
+        status:=CalibWobjandTool(robPose,camPos,nKinv,Twobj,Ttcp,\HandHeldCamera?HandHeldCamera,\cameraFrame:=cameraFrame,\toolFrame:=tool.tframe);
+        !cameraFrame:=PoseMult(robTcalwobj,[Twobj,[1,0,0,0]]);
+        !markerPos:=Ttcp;
+        !Use the calculated tool to make larger reorientations, to improve accuracy
+        !IF FALSE THEN
+        !Stop;
+        IF Present(HandHeldCamera) THEN
+            !Perform large re-orientations about markerPos 
+            mPose:=PoseMult(midPose_rob,PoseMult(PoseInv(tool.tframe),cameraFrame));
+            !Express markerPos in mid_Pose
+            mPos:=PoseVect(PoseInv(mPose),Twobj);
+            robPose{4}:=PoseMult(PoseMult(mPose,[mPos,OrientZYX(45,0,0)]),[-mPos,[1,0,0,0]]);
+            robPose{5}:=PoseMult(PoseMult(mPose,[mPos,OrientZYX(-45,0,0)]),[-mPos,[1,0,0,0]]);
+            robPose{6}:=PoseMult(PoseMult(mPose,[mPos,OrientZYX(0,15,0)]),[-mPos,[1,0,0,0]]);
+            robPose{9}:=PoseMult(PoseMult(mPose,[mPos,OrientZYX(0,-15,0)]),[-mPos,[1,0,0,0]]);
+
+            !robPose{6}:=PoseMult(robPose{6},PoseMult(PoseInv(tool.tframe),cameraFrame));
+            robPose{7}:=PoseMult(robPose{6},[sPos1,[1,0,0,0]]);
+            robPose{8}:=PoseMult(robPose{6},[sPos2,[1,0,0,0]]);
+
+            !robPose{9}:=PoseMult(robPose{9},PoseMult(PoseInv(tool.tframe),cameraFrame));
+            robPose{10}:=PoseMult(robPose{9},[sPos1,[1,0,0,0]]);
+            robPose{11}:=PoseMult(robPose{9},[[-sPos2.x,sPos2.y,0],[1,0,0,0]]);
+            !Now back to tool0
+            FOR i FROM 4 TO 11 DO
+                robPose{i}:=PoseMult(robPose{i},PoseMult(PoseInv(cameraFrame),tool.tframe));
+            ENDFOR
+
+        ELSE
+            !Express midPose in calwobj and add tool offset
+            midPose_calwobj:=PoseMult(PoseMult(PoseInv(robTcalwobj),midPose_rob),[Ttcp,[1,0,0,0]]);
+            !Rotate about calwobj z-axis
+            !RotAx_tool:=tool;
+            !RotAx_tool.tframe:=PoseMult(RotAx_tool.tframe,[Ttcp,[1,0,0,0]]);
+            robPose{4}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult([[0,0,0],OrientZYX(45,0,0)],PoseMult([-midPose_calwobj.trans,[1,0,0,0]],midPose_calwobj)));
+            robPose{5}:=PoseMult([midPose_calwobj.trans,[1,0,0,0]],PoseMult([[0,0,0],OrientZYX(-45,0,0)],PoseMult([-midPose_calwobj.trans,[1,0,0,0]],midPose_calwobj)));
+            robPose{6}:=PoseRelTool(midPose_calwobj,0,0,0\Rz:=20);
+            robPose{9}:=PoseRelTool(midPose_calwobj,0,0,0\Rz:=-20);
+            !Remove tool offset
+            robPose{4}:=PoseMult(robPose{4},PoseInv([Ttcp,[1,0,0,0]]));
+            robPose{5}:=PoseMult(robPose{5},PoseInv([Ttcp,[1,0,0,0]]));
+            robPose{6}:=PoseMult(robPose{6},PoseInv([Ttcp,[1,0,0,0]]));
+            robPose{9}:=PoseMult(robPose{9},PoseInv([Ttcp,[1,0,0,0]]));
+            robPose{7}:=robPose{6};
+            robPose{7}.trans.x:=robPose{2}.trans.x;
+            robPose{7}.trans.y:=robPose{2}.trans.y;
+            robPose{8}:=robPose{6};
+            robPose{8}.trans.x:=robPose{3}.trans.x;
+            robPose{8}.trans.y:=robPose{3}.trans.y;
+            robPose{10}:=robPose{9};
+            robPose{10}.trans.x:=robPose{2}.trans.x;
+            robPose{9}.trans.y:=robPose{2}.trans.y;
+            robPose{11}:=robPose{9};
+            robPose{11}.trans.x:=robPose{3}.trans.x;
+            robPose{10}.trans.y:=robPose{3}.trans.y;
+        ENDIF
+
+
+        FOR i FROM 4 TO 11 DO
+            mRobTarget.trans:=robPose{i}.trans;
+            mRobTarget.rot:=robPose{i}.rot;
+            mRobTarget.extax.eax_a:=robT{1}.extax.eax_a;
+            mRobTarget.robconf:=[0,0,0,11];
+            MoveL mRobTarget,v100,fine,tool\Wobj:=wobj0;
+            !Take Picture if RC
+            WaitTime\InPos,0.5;
+            IF RobOS() THEN
+                Clear nNoOffPicture;
+                WHILE nNoOffPicture<10 DO
+                    CameraResult:=RequestImageAndGetResult(CameraToUse);
+                    !Stop;
+                    IF CameraResult=[0,0,0] THEN
+                        Incr nNoOffPicture;
+                        TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
+                        !Stop;
+                    ELSE
+                        !Picture is ok, break loop
+                        nNoOffPicture:=10;
+                    ENDIF
+                    IF nNoOffPicture=3 THEN
+                        Clear nNoOffPicture;
+                        Calibrated:=2;
+                        Stop;
+                    ENDIF
+                ENDWHILE
+                !camPos{i}.x:=nPick_Value{1};
+                !camPos{i}.y:=nPick_Value{2};
+                camPos{i}.x:=CameraResult.x;
+                camPos{i}.y:=CameraResult.y;
+            ELSE
+                !Running on a VC
+                camPos{i}.x:=camMeasurement3{i,1};
+                camPos{i}.y:=camMeasurement3{i,2};
+            ENDIF
+        ENDFOR
+        FOR i FROM npoints+1 TO npoints+11 DO
+            calib_robPose{i}:=robPose{i-npoints};
+            calib_camPos{i}:=camPos{i-npoints};
+        ENDFOR
+        Write logfile,"RobotPoseCalibWobjandTool_SecondPass=["\NoNewLine;
+        FOR i FROM 1 TO 11 DO
+            Write logfile,"["\pos:=robPose{i}.trans\NoNewLine;
+            Write logfile,","\orient:=robPose{i}.rot\NoNewLine;
+            Write logfile,"]"\NoNewLine;
+            IF i<11 Write logfile,";";
+        ENDFOR
+        Write logfile,"]";
+        Write logfile,"CameraPosCalibWobjandTool_SecondPass=["\NoNewLine;
+        FOR i FROM 1 TO 11 DO
+            Write logfile,""\pos:=camPos{i}\NoNewLine;
+            IF i<11 Write logfile,";";
+        ENDFOR
+        Write logfile,"]";
+        !Print the reorientation error
+        TPWrite "Reorientation error 4_5_1="\Num:=VectMagn(camPos{4}-camPos{5});
+        !Now calculate the camera wobj and tool
+        status:=CalibWobjandTool(robPose,camPos,nKinv,Twobj,Ttcp,\HandHeldCamera?HandHeldCamera,\cameraFrame:=cameraFrame,\toolFrame:=tool.tframe);
+
+        IF Present(HandHeldCamera) THEN
+            !Perform large re-orientations about markerPos 
+            mPose:=PoseMult(midPose_rob,PoseMult(PoseInv(tool.tframe),cameraFrame));
+            !Express markerPos in mid_Pose
+            mPos:=PoseVect(PoseInv(mPose),Twobj);
+            robPose{4}:=PoseMult(PoseMult(mPose,[mPos,OrientZYX(45,0,0)]),[-mPos,[1,0,0,0]]);
+            robPose{5}:=PoseMult(PoseMult(mPose,[mPos,OrientZYX(-45,0,0)]),[-mPos,[1,0,0,0]]);
+            !Now back to tool0
+            FOR i FROM 4 TO 5 DO
+                robPose{i}:=PoseMult(robPose{i},PoseMult(PoseInv(cameraFrame),tool.tframe));
+            ENDFOR
+        ENDIF
+        FOR i FROM 4 TO 5 DO
+            mRobTarget.trans:=robPose{i}.trans;
+            mRobTarget.rot:=robPose{i}.rot;
+            mRobTarget.extax.eax_a:=robT{1}.extax.eax_a;
+            mRobTarget.robconf:=[0,0,0,11];
+            MoveL mRobTarget,v100,fine,tool\Wobj:=wobj0;
+            !Take Picture if RC
+            WaitTime\InPos,0.5;
+            IF RobOS() THEN
+                Clear nNoOffPicture;
+                WHILE nNoOffPicture<10 DO
+                    CameraResult:=RequestImageAndGetResult(CameraToUse);
+                    IF CameraResult=[0,0,0] THEN
+                        Incr nNoOffPicture;
+                        TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
+                        !Stop;
+                    ELSE
+                        !Picture is ok, break loop
+                        nNoOffPicture:=10;
+                    ENDIF
+                    IF nNoOffPicture=3 THEN
+                        Clear nNoOffPicture;
+                        Calibrated:=2;
+                        Stop;
+                    ENDIF
+                ENDWHILE
+                !camPos{i}.x:=nPick_Value{1};
+                !camPos{i}.y:=nPick_Value{2};
+                camPos{i}.x:=CameraResult.x;
+                camPos{i}.y:=CameraResult.y;
+            ELSE
+                !Running on a VC
+                camPos{i}.x:=camMeasurement3{i,1};
+                camPos{i}.y:=camMeasurement3{i,2};
+            ENDIF
+        ENDFOR
+        TPWrite "Reorientation error 4_5_2="\Num:=VectMagn(camPos{4}-camPos{5});
+        !ENDIF
+        !False
+        IF Present(HandHeldCamera) THEN
+            cameraFrame.trans:=Ttcp;
+            !markerPos:=PoseVect(robTcalwobj,Twobj);
+            markerPos:=Twobj;
+        ELSE
+            !cameraFrame:=PoseMult(robTcalwobj,[Twobj,[1,0,0,0]]);
+            cameraFrame.rot:=robTcam.rot;
+            cameraFrame.trans:=Twobj;
+            markerPos:=Ttcp;
+        ENDIF
+        Write logfile,"Ttcp="\Pos:=Ttcp;
+        Write logfile,"Twobj="\Pos:=Twobj;
+        IF present(Kinv) Kinv:=nKinv;
+        IF present(K) K:=nK;
+        !Calculate the calibration error
+        Write logfile,"Error in robot base=";
+        FOR i FROM 1 TO 11 DO
+            IF Present(HandHeldCamera) THEN
+                !robPose{i}.trans:=markerPos;
+                pc.trans:=PoseVect(PoseInv(PoseMult(robPose{i},cameraFrame)),markerPos);
+            ELSE
+                robPose{i}:=PoseMult(robPose{i},[Ttcp,[1,0,0,0]]);
+                pc:=PoseMult(PoseInv(cameraFrame),robPose{i});
+            ENDIF
+            MatrixMultiply nKinv,[[camPos{i}.x],[camPos{i}.y],[1]],pcam;
+            pcam{1,1}:=pcam{1,1}*pc.trans.z;
+            pcam{2,1}:=pcam{2,1}*pc.trans.z;
+            pcam{3,1}:=pc.trans.z;
+            !camTtcp(i,:,:)=[eye(3) Twobj;0 0 0 1]*[eye(3) lambda*p;0 0 0 1];
+            IF Present(HandHeldCamera) THEN
+                mPose:=PoseMult(PoseMult(robPose{i},cameraFrame),[[pcam{1,1},pcam{2,1},pcam{3,1}],[1,0,0,0]]);
+                mPos:=mPose.trans-markerPos;
+            ELSE
+                mPose:=PoseMult(cameraFrame,[[pcam{1,1},pcam{2,1},pcam{3,1}],[1,0,0,0]]);
+                mPos:=robPose{i}.trans-mPose.trans;
+            ENDIF
+            Write logfile,""\pos:=mPos;
+            ErrRobBase{i}:=VectMagn(mPos);
+        ENDFOR
+        Write logfile,"Error in camera measurement=";
+        FOR i FROM 1 TO 11 DO
+            pc:=PoseMult(PoseInv(cameraFrame),robPose{i});
+            !p=K*pz(1:3);
+            !cam_error=[cam_error; p'/p(3)-[camPos(i,:) 1]];
+            MatrixMultiply nK,[[pc.trans.x],[pc.trans.y],[pc.trans.z]],pcam;
+            !mPose:=PoseMult(cameraFrame,[camPos{i},[1,0,0,0]]);
+            mPos:=[pcam{1,1},pcam{2,1},pcam{3,1}];
+            mPos.x:=mPos.x/mPos.z;
+            mPos.y:=mPos.y/mPos.z;
+            mPos.z:=mPos.z/mPos.z;
+            Write logfile,""\pos:=camPos{i}-mPos;
+        ENDFOR
+        Write logfile,"#########Calibration Measurements###############";
+        Write logfile,"calib_robPose=["\NoNewLine;
+        FOR i FROM 1 TO npoints+11 DO
+            Write logfile,"["\pos:=calib_robPose{i}.trans\NoNewLine;
+            Write logfile,","\orient:=calib_robPose{i}.rot\NoNewLine;
+            Write logfile,"]"\NoNewLine;
+            IF i<npoints+11 Write logfile,";";
+        ENDFOR
+        Write logfile,"];";
+        Write logfile,"calib_camPos=["\NoNewLine;
+        FOR i FROM 1 TO npoints+11 DO
+            Write logfile,""\pos:=calib_camPos{i}\NoNewLine;
+            IF i<npoints+11 Write logfile,";";
+        ENDFOR
+        Write logfile,"];";
+        Write logfile,"nK=["\NoNewLine;
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 3 DO
+                Write logfile," "\Num:=nK{i,j}\NoNewLine;
+            ENDFOR
+            IF i<3 Write logfile,"";
+        ENDFOR
+        Write logfile,"];";
+        Write logfile,"cameraFrame=["\NoNewLine;
+        Write logfile,"["\pos:=cameraFrame.trans\NoNewLine;
+        Write logfile,","\orient:=cameraFrame.rot\NoNewLine;
+        Write logfile,"];";
+        Write logfile,"markerPos=["\NoNewLine;
+        Write logfile,""\pos:=markerPos\NoNewLine;
+        Write logfile,";";
+        TPWrite "CalibCamera Max Error = "\Num:=MaxArray(ErrRobBase);
+        TPWrite "CalibCamera Mean Error = "\Num:=Mean(ErrRobBase);
+        Close logfile;
+        RETURN ;
+    ERROR
+        IF ERRNO=ERR_FILEACC THEN
+            taskname:=StrPart(GetTaskName(),2,5);
+            TPWrite "logCalibCamera2"+taskname+".txt";
+            Open "HOME:"\File:="logCalibCamera2"+taskname+".txt",logfile\Write;
+            RETRY;
+        ENDIF
+    ENDPROC
+
+
+    FUNC pose PoseRelTool(pose mPose,num dx,num dy,num dz,\num Rx,\num Ry,\num Rz)
+        VAR robtarget mRobtarget;
+        VAR pose retPose;
+        mRobTarget.trans:=mPose.trans;
+        mRobTarget.rot:=mPose.rot;
+        mRobTarget:=RelTool(mRobTarget,dx,dy,dz\Rx?Rx\Ry?Ry\Rz?Rz);
+        retPose.trans:=mRobTarget.trans;
+        retPose.rot:=mRobTarget.rot;
+        RETURN retPose;
+    ENDFUNC
+
+
+    !This function calculates the camera depth given a lenght and 2 camera measurements
+    !length = physical distance in mm (measured with a ruler)
+    !camPos1,camPos2 camera measurements corresponding to the lenght, ie one measurement at each end
+    !the return value is the Z coordinate of the object in camera work object
+    !This function will only work correctly if the measured object is orthogonal to the camera axis
+    FUNC num CalcCameraDepth(num length,pos camPos1,pos camPos2,num Kinv{*,*})
+        !VAR num Ka;
+        VAR num dcx;
+        VAR num dcy;
+        VAR num hres{3,1};
+        dcx:=camPos2.x-camPos1.x;
+        dcy:=camPos2.y-camPos1.y;
+        MatrixMultiply Kinv,[[dcx],[dcy],[0]],hres;
+        !Ka:=Pow(Kinv{1,1},2)*Pow(dcx,2)+Pow(Kinv{1,2},2)*Pow(dcy,2)+Pow(Kinv{2,2},2)*Pow(dcy,2)+2*Kinv{1,2}*Kinv{1,1}*dcy*dcx;
+        !return sqrt(Pow(length,2)*(Ka))/(Ka);
+        RETURN length/sqrt(hres{1,1}*hres{1,1}+hres{2,1}*hres{2,1});
+        RETURN 1;
+    ENDFUNC
+
+
+    FUNC pose CalcObjFrame(pose trayPose,num camPos{*},num Zoffset,num Kinv{*,*})
+        VAR num T{4,4};
+        VAR num nP{3};
+        VAR num dP;
+        VAR num camZ;
+        VAR num pcam{3,1};
+        VAR pose retPose;
+        !Determine plane equation for tray pose
+        posetoxform trayPose,T;
+        nP:=[T{1,3},T{2,3},T{3,3}];
+        dP:=-(nP{1}*T{1,4}+nP{2}*T{2,4}+nP{3}*T{3,4});
+        !Solve for camZ from plane vision ray intersection
+        camZ:=-(dP-Zoffset)/(nP{1}*Kinv{1,1}*camPos{1}+nP{1}*Kinv{1,2}*camPos{2}+nP{1}*Kinv{1,3}+nP{2}*Kinv{2,2}*camPos{2}+nP{2}*Kinv{2,3}+nP{3});
+        MatrixMultiply Kinv,[[camPos{1}],[camPos{2}],[1]],pcam;
+        retPose:=PoseMult([[0,0,0],trayPose.rot],[[0,0,0],OrientZYX(camPos{3},0,0)]);
+        retPose.trans:=[pcam{1,1}*camZ,pcam{2,1}*camZ,camZ];
+        RETURN retPose;
+    ENDFUNC
+
+
+    !Calculates the position and orientation difference between PoseA and PoseB
+    !Returns true if difference is within tolerance and false otherwise
+    FUNC bool ComparePoses(pose PoseA,pose PoseB,num posTolerance,num AngleTolerance)
+        VAR pose poseDiff;
+        VAR num transDiff;
+        VAR num rotDiff;
+        VAR pos rotAxis;
+        PoseA.trans.z:=PoseB.trans.z;
+        poseDiff:=PoseMult(PoseInv(PoseA),PoseB);
+        transDiff:=VectMagn(poseDiff.trans);
+        rotAxis:=QuatRotAxis(poseDiff.rot,\angle:=rotDiff);
+        IF transDiff<posTolerance AND Abs(rotDiff)<AngleTolerance THEN
+            RETURN TRUE;
+        ELSE
+            TPWrite "Pose difference outside tolerance in "+GetTaskName()+"/ComparePoses";
+            TPWrite "Position Error = "+NumToStr(transDiff,3)+", Rotation Error = "+NumToStr(rotDiff,3);
+            RETURN FALSE;
+        ENDIF
+    ENDFUNC
+
+    !************** ReCalcRobT ************************************************
+    !* Use this function to recalculate a robtarget from one tool or workobject 
+    !* to a different tool or workobject.
+    !* The robot will move to the exact same position, i.e
+    !*MoveL point, told\wobj:=wobjold; and
+    !*MoveL RecalcRobT(point,tol,tnew,wold,wnew),tnew\wobj:=wnew;
+    !*both move the robot to the exact same position.
+    !**************************************************************************
+    FUNC robtarget ReCalcRobT(
+    robtarget point,
+    PERS tooldata told,
+    PERS tooldata tnew,
+    PERS wobjdata wold,
+    PERS wobjdata wnew)
+
+        VAR pose ppnt:=[[0,0,0],[1,0,0,0]];
+        VAR pose ppntnew:=[[0,0,0],[1,0,0,0]];
+        VAR pose pb:=[[0,0,0],[1,0,0,0]];
+        VAR pose pa:=[[0,0,0],[1,0,0,0]];
+
+        ppnt:=[point.trans,point.rot];
+        pa:=PoseMult(PoseInv(PoseMult(wnew.uframe,wnew.oframe)),PoseMult(wold.uframe,wold.oframe));
+        pb:=PoseMult(ppnt,PoseMult(PoseInv(told.tframe),tnew.tframe));
+        ppntnew:=PoseMult(pa,pb);
+        RETURN [ppntnew.trans,ppntnew.rot,point.robconf,point.extax];
+    ENDFUNC
+
+    !************ ReCalcPose**************************************************
+    !* Use this function to recalculate a pose from one tool or workobject 
+    !* to a different tool or workobject.
+    !* This is a pose equivalent to ReCalcRobT
+    !**************************************************************************
+    FUNC pose ReCalcPose(
+    robtarget point,
+    PERS tooldata told,
+    PERS tooldata tnew,
+    PERS wobjdata wold,
+    PERS wobjdata wnew)
+
+        VAR pose ppnt:=[[0,0,0],[1,0,0,0]];
+        VAR pose ppntnew:=[[0,0,0],[1,0,0,0]];
+        VAR pose pb:=[[0,0,0],[1,0,0,0]];
+        VAR pose pa:=[[0,0,0],[1,0,0,0]];
+
+        ppnt:=[point.trans,point.rot];
+        pa:=PoseMult(PoseInv(PoseMult(wnew.uframe,wnew.oframe)),PoseMult(wold.uframe,wold.oframe));
+        pb:=PoseMult(ppnt,PoseMult(PoseInv(told.tframe),tnew.tframe));
+        ppntnew:=PoseMult(pa,pb);
+        RETURN ppntnew;
+    ENDFUNC
+
+    !************ CalcLSQPlane ***********
+    !*Calulates a best fit plane for points
+    !***********************************
+    FUNC pose CalcLSQPlane(robtarget points{*})
+        VAR num N;
+        VAR dnum A{10,3};
+        VAR dnum b{10};
+        VAR pose retPose;
+        VAR dnum x{3};
+        VAR pos planeNormal;
+        VAR num D;
+        VAR num Angle;
+        VAR pos rotAxis;
+        N:=Dim(points,1);
+        IF N>10 THEN
+            ErrWrite "Error in CalcLSQPlane","Maximum 10 points can be used";
+            RETURN retPose;
+        ENDIF
+        !A=[points(:,2:3) ones(N,1)];
+        !b=-points(:,1);
+        FOR i FROM 1 TO N DO
+            A{i,1}:=numtodnum(points{i}.trans.x);
+            A{i,2}:=numtodnum(points{i}.trans.y);
+            A{i,3}:=1;
+            b{i}:=-numtodnum(points{i}.trans.z);
+        ENDFOR
+
+        MatrixSolve A\A_m:=N\A_n:=3,b,x;
+
+        !n=[x(1:2)' 1];
+        !plane=[x(1:2)' 1 x(3)]/norm(n);
+        !plane normal points along positive z axis
+        planeNormal:=[dnumtonum(x{1}),dnumtonum(x{2}),1];
+        D:=dnumtonum(x{3});
+
+        !place origin along z axis
+        retPose.trans.x:=0;
+        retPose.trans.y:=0;
+        retPose.trans.z:=-D/planeNormal.z;
+        !Calclate angle between z axis and plane normal
+        planeNormal:=NormalizePos(planeNormal);
+        Angle:=acos(DotProd(planeNormal,[0,0,1]));
+        !calculate the rotation axis
+        rotAxis:=CrossProduct([0,0,1],planeNormal);
+        !Convert to quaternion
+        retPose.rot:=NOrient(AxisAngletoQuat(rotAxis,Angle));
+        RETURN retPose;
+    ENDFUNC
+
+    FUNC POS RequestImageAndGetResult(VAR CameraDev CameraToUse)
+        VAR cameratarget tgt;
+        %"CamReqImage"%CameraToUse;
+        %"CamGetResult"%CameraToUse,tgt\MaxTime:=5;
+        WaitTime 2.0;
+        Calibrated:=3;
+        RETURN tgt.cframe.trans;
+    ERROR
+        IF ERRNO=ERR_CAM_MAXTIME THEN
+            TPWrite "Could not find the target";
+            RETURN [0,0,0];
+        ELSEIF ERRNO=ERR_CAM_COM_TIMEOUT THEN
+            WaitTime 2.0;
+            Calibrated:=3;
+            RETRY;
+        ENDIF
+    ENDFUNC
+
+    FUNC pose AlignPose(pose p1,pos toolAxis,pos baseAxis)
+        VAR pos toolAxis_base;
+        VAR pos rotAxis;
+        VAR num Angle;
+        VAR pose mPose;
+        toolAxis_base:=PoseVect([[0,0,0],p1.rot],toolAxis);
+        !Calculate the rotation angle
+        Angle:=-acos(DotProd(toolAxis_base,baseAxis));
+        rotAxis:=CrossProduct(baseAxis,toolAxis_base);
+        !Convert to quaternion
+        mPose.rot:=NOrient(AxisAngletoQuat(rotAxis,Angle));
+        RETURN PoseMult([p1.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],p1.rot]));
+    ENDFUNC
+
+    FUNC robtarget CalcMidPoint(robtarget p1,robtarget p2,PERS tooldata tool)
+        VAR num nAx4Dist;
+        VAR num nAx5Dist;
+        VAR num nAx6Dist;
+        VAR num nMaxRollDist;
+        VAR num b;
+        VAR jointtarget jt1;
+        VAR jointtarget jt2;
+        VAR num nAx4Mid;
+        VAR num nAx5Mid;
+        VAR num nAx6Mid;
+        VAR robtarget pMid;
+        VAR robtarget pRetTarget;
+        VAR num nMid;
+
+        jt1:=CalcJointT(p1,tool);
+        jt2:=CalcJointT(p2,tool);
+        nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+        nAx5Dist:=jt2.robax.rax_5-jt1.robax.rax_5;
+        nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+        nMaxRollDist:=Max(Abs(nAx4Dist),Abs(nAx6Dist));
+        b:=Max(nMaxRollDist-Abs(nAx5Dist),0);
+        !nMid:=(nMaxRollDist-jt2.robax.rax_5)/nMaxRollDist;
+        nMid:=0.5;
+        nAx4Mid:=nMid*(jt2.robax.rax_4+jt1.robax.rax_4);
+        nAx6Mid:=nMid*(jt2.robax.rax_6+jt1.robax.rax_6);
+        pMid.trans:=nMid*(p1.trans+p2.trans);
+        pMid.extax.eax_a:=nMid*(p1.extax.eax_a+p2.extax.eax_a);
+        pMid.robconf:=p1.robconf;
+        pRetTarget:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,1,nAx6Mid);
+
+        RETURN pRetTarget;
+    ENDFUNC
+
+    FUNC robtarget CalcMidPointDouble(robtarget p1,robtarget p2,PERS tooldata tool,VAR robtarget retRobT2)
+        VAR num nAx4Dist;
+        VAR num nAx5Dist;
+        VAR num nAx6Dist;
+        VAR num nMaxRollDist;
+        VAR num b;
+        VAR jointtarget jt1;
+        VAR jointtarget jt2;
+        VAR num nAx4Mid;
+        VAR num nAx5Mid;
+        VAR num nAx6Mid;
+        VAR robtarget pMid;
+        VAR robtarget pRetTarget;
+        VAR num nMid1;
+        VAR num nMid2;
+
+        jt1:=CalcJointT(p1,tool);
+        jt2:=CalcJointT(p2,tool);
+        nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+        nAx5Dist:=jt2.robax.rax_5-jt1.robax.rax_5;
+        nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+        nMaxRollDist:=Max(Abs(nAx4Dist),Abs(nAx6Dist));
+        b:=Max(nMaxRollDist-Abs(nAx5Dist),0);
+        nMid1:=(jt1.robax.rax_5)/nMaxRollDist;
+        !nMid:=0.5;
+        nAx4Mid:=nMid1*(jt2.robax.rax_4-jt1.robax.rax_4)+jt1.robax.rax_4;
+        nAx6Mid:=nMid1*(jt2.robax.rax_6-jt1.robax.rax_6)+jt1.robax.rax_6;
+        pMid.trans:=nMid1*(p2.trans-p1.trans)+p1.trans;
+        pMid.extax.eax_a:=nMid1*(p2.extax.eax_a-p1.extax.eax_a)+p1.extax.eax_a;
+        pMid.robconf:=p1.robconf;
+        pRetTarget:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,1,nAx6Mid);
+
+        nMid2:=(nMaxRollDist-jt2.robax.rax_5)/nMaxRollDist;
+        !nMid:=0.5;
+        nAx4Mid:=nMid2*(jt2.robax.rax_4-jt1.robax.rax_4)+jt1.robax.rax_4;
+        nAx6Mid:=nMid2*(jt2.robax.rax_6-jt1.robax.rax_6)+jt1.robax.rax_6;
+        pMid.trans:=nMid2*(p2.trans-p1.trans)+p1.trans;
+        pMid.extax.eax_a:=nMid2*(p2.extax.eax_a-p1.extax.eax_a)+p1.extax.eax_a;
+        pMid.robconf:=p1.robconf;
+        retRobT2:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,1,nAx6Mid);
+        RETURN pRetTarget;
+    ENDFUNC
+
+    FUNC robtarget OptimizeArmAngle(
+      robtarget solution1,
+      PERS tooldata Tool,
+      \PERS wobjdata WObj,
+	  \VAR num retDistance,
+	  \VAR jointtarget jointSol)
+
+        !Attempt to optimize arm angle to get up to 10 degrees distance to mechanical stop
+        VAR robtarget solution2;
+        VAR jointtarget jt;
+        VAR jointtarget jt2;
+        VAR num distance:=10;
+        VAR num Anglex;
+        VAR num n_retry;
+        VAR num origArmAngle;
+        VAR num iter;
+        VAR num currentDist;
+        VAR bool errorOccured:=FALSE;
+        VAR num angleCorrection;
+        VAR num AngleErr;
+        VAR num AngleErrDiff;
+
+
+
+        origArmAngle:=solution1.extax.eax_a;
+        solution2:=solution1;
+        Start:
+        errorOccured:=FALSE;
+        iter:=0;
+
+
+        !Check if target is reachable
+        jt:=CalcJointT(solution1,Tool\WObj?WObj\ErrorNumber:=myerrno);
+        n_retry:=2;
+        Anglex:=solution1.extax.eax_a;
+        !TPWrite "Attempting to optimize arm angle";
+        currentDist:=OptimizeArmAngleErr(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+
+        IF CalcDistancetoStop(jt)<distance THEN
+            WHILE iter<4 AND currentDist<-0.5 DO
+                !TPWrite "x="\Num:=x;
+                AngleErr:=OptimizeArmAngleErr(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+                AngleErrDiff:=OptimizeArmAngleErrDiff(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+                IF Abs(AngleErrDiff)>1e-2 THEN
+                    angleCorrection:=AngleErr/AngleErrDiff;
+                    IF abs(angleCorrection)>30 THEN
+                        !nearly singluar problem, take smaller step
+                        angleCorrection:=Sign(angleCorrection)*30;
+                    ENDIF
+                    Anglex:=Modulo(Anglex-angleCorrection+180,360)-180;
+                    iter:=iter+1;
+                    currentDist:=OptimizeArmAngleErr(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+                ELSE
+                    iter:=4;
+                ENDIF
+            ENDWHILE
+        ENDIF
+        !TPWrite "x="\Num:=x;
+        solution2.extax.eax_a:=Modulo(Anglex+180,360)-180;
+        !check that situation was improved by optimization
+        jt2:=CalcJointT(solution2,Tool\WObj?WObj\ErrorNumber:=myerrno);
+        IF CalcDistancetoStop(jt)>CalcDistancetoStop(jt2) THEN
+            IF present(retDistance)
+			retDistance:=CalcDistancetoStop(jt);
+            IF Present(jointSol) jointSol:=jt;
+            RETURN solution1;
+        ENDIF
+        solution2:=CalcRobT(jt2,Tool\WObj?WObj);
+        solution2.trans:=solution1.trans;
+        solution2.rot:=solution1.rot;
+        IF present(retDistance)
+			retDistance:=CalcDistancetoStop(jt2);
+        IF Present(jointSol) jointSol:=jt2;
+        RETURN solution2;
+    ERROR
+        errorOccured:=TRUE;
+        IF ERRNO=ERR_ROBLIMIT THEN
+            IF n_retry=0 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle+10;
+            ELSEIF n_retry=1 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle-10;
+            ELSEIF n_retry=2 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle;
+                Anglex:=origArmAngle;
+                distance:=distance/2;
+            ELSEIF n_retry=3 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle;
+                Anglex:=origArmAngle;
+                distance:=distance/2;
+            ELSE
+                RAISE AsimovError;
+            ENDIF
+            SkipWarn;
+            TRYNEXT;
+        ENDIF
+        RAISE AsimovError;
+    ENDFUNC
+
+    LOCAL FUNC num OptimizeArmAngleErr(
+      num armAngle,
+      robtarget solution,
+      PERS tooldata Tool,
+      \PERS wobjdata WObj,
+      num goal,
+	  jointtarget startGuess)
+
+        solution.extax.eax_a:=armAngle;
+        RETURN CalcDistanceToStop(CalcJointT(solution,Tool\WObj?WObj\ErrorNumber:=myerrno))-goal;
+    ERROR
+        RAISE ;
+    ENDFUNC
+
+
+    LOCAL FUNC num OptimizeArmAngleErrDiff(
+      num armAngle,
+      robtarget solution,
+      PERS tooldata Tool,
+      \PERS wobjdata WObj,
+      num goal,
+	  jointtarget startGuess)
+
+        VAR num dist1;
+        VAR num dist2;
+        VAR num h;
+        h:=1e-3;
+        solution.extax.eax_a:=armAngle-h;
+        dist1:=CalcDistanceToStop(CalcJointT(solution,Tool\WObj?WObj\ErrorNumber:=myerrno))-goal;
+        solution.extax.eax_a:=armAngle+h;
+        dist2:=CalcDistanceToStop(CalcJointT(solution,Tool\WObj?WObj\ErrorNumber:=myerrno))-goal;
+        RETURN (dist2-dist1)/(2*h);
+    ERROR
+        RAISE ;
+    ENDFUNC
+
+    !-----------------------------------------------------------------------
+    ! YuMiMove - Makes a compact and fast movement to a robtarget.
+    !       ArmAngle is optimized, if needed, for ToPoint
+    !       Conf is set to 0011
+    !       Mid point is inserted if needed for compact motion
+    !       Axis 4 and 6 are allowed to overturn until  20 degrees to lim
+    !       \MidOffs - use to offset midpoint
+    !                 Depending on the task executing, it uses Hand1 or Hand2 as tooldata.
+    !                 Syntax - PROC Move(robtarget ToPoint);
+    !       \J Use for large Joint motion
+    !       \L Use for short Linear motion, ConfL\Off will be used
+    !       \String Sync, use to perform a MoveLSync with Proc Sync 
+    PROC MoveY(\switch J|switch L,
+        \num DesiredTorque
+        \VAR bool CollisionDetected,
+        robtarget pToPoint,
+        speeddata speed,
+        zonedata zone,
+		PERS tooldata tool
+        \PERS wobjdata WObj
+        \jointtarget LastPosition
+        \pos MidOffs
+        \string SyncProc)
+        BookErrNo ERR_RESTART_MOVEY;
+        bRestartMoveYActive:=TRUE;
+        bRestartMoveYOrdered:=FALSE;
+
+        IF Present(J) THEN
+            nMoveYMode:=2;
+            MoveY_int\J,\DesiredTorque?DesiredTorque,pToPoint,speed,zone,tool\WObj?WObj\LastPosition?LastPosition\MidOffs?MidOffs\SyncProc?SyncProc;
+        ELSEIF Present(L) THEN
+            nMoveYMode:=3;
+            MoveY_int\L,\DesiredTorque?DesiredTorque\CollisionDetected?CollisionDetected,pToPoint,speed,zone,tool\WObj?WObj\LastPosition?LastPosition\MidOffs?MidOffs\SyncProc?SyncProc;
+        ELSE
+            nMoveYMode:=0;
+            MoveY_int\DesiredTorque?DesiredTorque\CollisionDetected?CollisionDetected,pToPoint,speed,zone,tool\WObj?WObj\LastPosition?LastPosition\MidOffs?MidOffs\SyncProc?SyncProc;
+        ENDIF
+        bRestartMoveYActive:=FALSE;
+        RETURN ;
+    ERROR (ERR_RESTART_MOVEY)
+        IF ERRNO=ERR_RESTART_MOVEY THEN
+            jtLastPosition:=[[0,0,0,0,0,0],[0,0,0,0,0,0]];
+            IF nMoveYMode=0 THEN
+                ClearPath;
+                nMoveYMode:=1;
+                bRestartMoveYActive:=FALSE;
+                RETRY;
+            ENDIF
+        ENDIF
+    UNDO
+        bRestartMoveYActive:=FALSE;
+        jtLastPosition:=[[0,0,0,0,0,0],[0,0,0,0,0,0]];
+    ENDPROC
+
+    !nMoveYMode=0   ->  Default, MoveL SingArea\Wrist, optmize target armangle and path_midpoint
+    !nMoveYMode:=1  ->  MoveJ optmize target armangle and path_midpoint
+    !\L OR \DesiredToruqe ->  MoveL SingArea\Off, Use full range of Ax 4 & 6, no optimization/no midpoint
+    !\DesiredToruqe -> ContactL
+    !\J  ->  MoveJ no optimization/ no midpoint 
+    PROC MoveY_int(\switch J|switch L,
+        \num DesiredTorque
+        \VAR bool CollisionDetected,
+        robtarget pToPoint,
+        speeddata speed,
+        zonedata zone,
+		PERS tooldata tool
+        \PERS wobjdata WObj
+        \jointtarget LastPosition
+        \pos MidOffs
+        \string SyncProc)
+
+        VAR num nAx4Dist;
+        VAR num nAx4DistToStop;
+        VAR num nAx5Dist;
+        VAR num nAx6Dist;
+        VAR num nAx1Dist;
+        VAR num nAx7Dist;
+        VAR num nAx6DistToStop;
+        VAR num nMaxRollDist;
+        VAR jointtarget jt1;
+        VAR jointtarget jt_mid;
+        VAR jointtarget jt2;
+        VAR num nAx4Mid;
+        VAR num nAx5Mid;
+        VAR num nAx6Mid;
+        VAR robtarget pMid;
+        VAR num nMid;
+        VAR num nMechDist:=10;
+        VAR num nMechDistRoll:=20;
+        VAR num nDist;
+        VAR robtarget pToPoint_local;
+        VAR robtarget p1;
+        VAR robtarget p2;
+        VAR num ArmAngleDiff;
+        !VAR num nLineDist;
+        VAR bool bSingAreaActive;
+        VAR robtarget pFromPoint;
+        VAR num maxAx5Dist;
+        VAR Pose pDiff;
+        VAR num linDist;
+        VAR num angDist;
+        VAR bool bLinearMovement;
+
+        bSingAreaActive:=C_MOTSET.sing.wrist;
+        IF Present(LastPosition) THEN
+            jtLastPosition:=LastPosition;
+        ELSEIF jtLastPosition.robax=[0,0,0,0,0,0] THEN
+            jtLastPosition:=CJointT();
+        ENDIF
+        pToPoint.robconf:=[0,0,0,11];
+        jt1:=jtLastPosition;
+        pFromPoint:=CalcRobT(jt1,Tool\WObj?WObj);
+        jt2:=CalcJointT(pToPoint,Tool\WObj?WObj\ErrorNumber:=myerrno);
+        IF Present(J) THEN
+            pToPoint_local:=pToPoint;
+            GOTO MoveTo_ToPoPoint;
+        ENDIF
+        pDiff:=PoseMult(PoseInv([pFromPoint.trans,pFromPoint.rot]),[pToPoint.trans,pToPoint.rot]);
+        linDist:=VectMagn(pDiff.trans);
+        angDist:=2*acos(abs(pDiff.rot.q1));
+        IF angDist<45 OR Present(L) THEN
+            bLinearMovement:=TRUE;
+        ELSE
+            bLinearMovement:=FALSE;
+        ENDIF
+        IF bLinearMovement=FALSE AND CalcDistancetoStop(jt2)<nMechDist THEN
+            pToPoint_local:=OptimizeArmAngle(pToPoint,Tool\WObj?WObj\jointSol:=jt2);
+        ENDIF
+        !For L motions, allow use of full motion range on roll axes
+        IF bLinearMovement THEN
+            nDist:=0;
+        ELSE
+            nDist:=nMechDistRoll;
+        ENDIF
+        
+        nAx1Dist:=jt2.robax.rax_1-jt1.robax.rax_1;
+        nAx7Dist:=jt2.extax.eax_a-jt1.extax.eax_a;
+        nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+        nAx5Dist:=jt2.robax.rax_5-jt1.robax.rax_5;
+        nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+        !Decide turn for axis 4 & 6
+        IF Abs(nAx4Dist)>180 THEN
+            nAx4DistToStop:=(jointlimits{4,2}-jointlimits{4,1})/2-abs(CalcOverTurn(jt2.robax.rax_4)-(jointlimits{4,2}+jointlimits{4,1})/2);
+            IF nAx4DistToStop>nDist THEN
+                jt2.robax.rax_4:=CalcOverTurn(jt2.robax.rax_4);
+                nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+            ENDIF
+        ENDIF
+        IF Abs(nAx6Dist)>180 THEN
+            nAx6DistToStop:=(jointlimits{6,2}-jointlimits{6,1})/2-abs(CalcOverTurn(jt2.robax.rax_6)-(jointlimits{6,2}+jointlimits{6,1})/2);
+            IF nAx6DistToStop>nDist THEN
+                jt2.robax.rax_6:=CalcOverTurn(jt2.robax.rax_6);
+                nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+            ENDIF
+        ENDIF
+        pToPoint_local:=CalcRobT(jt2,tool\WObj?Wobj);
+        IF bLinearMovement GOTO MoveTo_ToPoPoint;
+
+        !Check if shoulder midpoint is needed
+        maxAx5Dist:=Max(jt1.robax.rax_5,jt2.robax.rax_5);
+        IF maxAx5Dist<(Abs(nAx4Dist)/2) THEN
+            nAx5Mid:=1;
+        ELSE
+            nAx5Mid:=maxAx5Dist-(Abs(nAx4Dist)/2);
+            !nAx5Mid:=1;
+        ENDIF
+        IF Abs(nAx1Dist)>180 OR Abs(nAx7Dist)>180 THEN
+            jt_mid.robax.rax_1:=0.5*(jt1.robax.rax_1+jt2.robax.rax_1);
+            jt_mid.robax.rax_2:=-1;
+            !jt_mid.robax.rax_3:=0.5*(jt1.robax.rax_3+jt2.robax.rax_3);
+            jt_mid.robax.rax_3:=60;
+            jt_mid.robax.rax_4:=0.5*(jt1.robax.rax_4+jt2.robax.rax_4);
+            jt_mid.robax.rax_5:=0.5*(jt1.robax.rax_5+jt2.robax.rax_5);
+            jt_mid.robax.rax_6:=0.5*(jt1.robax.rax_6+jt2.robax.rax_6);
+            jt_mid.extax.eax_a:=0.5*(jt1.extax.eax_a+jt2.extax.eax_a);
+            pMid:=CalcRobT(jt_mid,tool);
+            !Workaround due to unstable kinematic model in 6.03
+            nMoveYMode:=1;
+
+            !Check if wrist midpoint is needed
+            !ELSEIF Abs(nAx4Dist)-Abs(nAx5Dist)>90 THEN
+            !Always insert wrist midpoint
+        ELSE
+            nMid:=0.5;
+            nAx4Mid:=nMid*(jt2.robax.rax_4-jt1.robax.rax_4)+jt1.robax.rax_4;
+            nAx6Mid:=nMid*(jt2.robax.rax_6-jt1.robax.rax_6)+jt1.robax.rax_6;
+            pMid.trans:=nMid*(pToPoint.trans-pFromPoint.trans)+pFromPoint.trans;
+            ArmAngleDiff:=pToPoint.extax.eax_a-pFromPoint.extax.eax_a;
+            IF abs(ArmAngleDiff)>180 THEN
+                ArmAngleDiff:=Modulo(pToPoint.extax.eax_a,360)-Modulo(pFromPoint.extax.eax_a,360);
+            ENDIF
+            pMid.extax.eax_a:=Modulo(nMid*ArmAngleDiff+pFromPoint.extax.eax_a+180,360)-180;
+            pMid.robconf:=pFromPoint.robconf;
+            pMid:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,nAx5Mid,nAx6Mid\WObj?Wobj);
+
+        ENDIF
+
+        SingArea\Wrist;
+        IF pMid.rot<>[0,0,0,0] THEN
+            IF nMoveYMode=0 THEN
+                MoveL\Conc, pMid,speed,z100,tool\WObj?WObj;
+            ELSE
+                MoveJ\Conc, pMid,speed,z100,tool\WObj?WObj;
+            ENDIF
+        ENDIF
+        MoveTo_ToPoPoint:
+        IF nMoveYMode=1 OR Present(J) THEN
+            IF Present(SyncProc) THEN
+                MoveJSync pToPoint_local,speed,zone,tool\WObj?Wobj,SyncProc;
+            ELSE
+                MoveJ pToPoint_local,speed,zone,tool\WObj?Wobj;
+            ENDIF
+        ELSE
+            IF Present(L) THEN 
+                SingArea\Off;
+            ELSE
+                SingArea\Wrist;
+            ENDIF
+            IF Present(DesiredTorque) THEN
+                IF Present(CollisionDetected) CollisionDetected:=TRUE;
+                ContactL\DesiredTorque:=DesiredTorque,pToPoint_local,speed,tool,\WObj?Wobj;
+                IF Present(SyncProc)%SyncProc %;
+            ELSEIF Present(SyncProc) THEN
+                MoveLSync pToPoint_local,speed,zone,tool\WObj?Wobj,SyncProc;
+            ELSE
+                IF zone=fine THEN
+                    MoveL pToPoint_local,speed,zone,tool\WObj?Wobj;
+                ELSE
+                    MoveL\Conc, pToPoint_local,speed,zone,tool\WObj?Wobj;
+                ENDIF
+            ENDIF
+        ENDIF
+        jtLastPosition:=jt2;
+        IF bSingAreaActive=FALSE Singarea\Off;
+        RETURN ;
+        MoveJ pFromPoint,speed,zone,tool\WObj?Wobj;
+        MoveL pFromPoint,speed,zone,tool\WObj?Wobj;
+    ERROR
+        IF ERRNO=ERR_CONTACTL THEN
+            SkipWarn;
+            IF Present(CollisionDetected) CollisionDetected:=FALSE;
+            TRYNEXT;
+        ENDIF
+    UNDO
+        IF bSingAreaActive=FALSE Singarea\Off;
+    ENDPROC
+
+    FUNC num CalcOverTurn(num angle)
+        IF angle<0 AND angle>-180 THEN
+            RETURN angle+360;
+        ELSEIF angle>=0 AND angle<180 THEN
+            RETURN angle-360;
+        ELSE
+            RETURN angle;
+        ENDIF
+    ENDFUNC
+
+    PROC Restart_Event()
+        IF ERR_RESTART_MOVEY>-1 AND bRestartMoveYOrdered AND nMoveYMode=0 THEN
+            bRestartMoveYOrdered:=FALSE;
+            RAISE ERR_RESTART_MOVEY;
+        ENDIF
+        jtLastPosition:=[[0,0,0,0,0,0],[0,0,0,0,0,0]];
+    ERROR
+        RAISE ;
+    ENDPROC
+
+    !Calculates the distance between p and the path from l1 to l2
+    !If the orthogonal projection of p on l1l2 lies on the path the distance to the line is returned
+    !If the projection lies outside the line the distance to the closest point on the l1l2 path is returned.
+    FUNC num CalcDistanceToPath(pos l1,pos l2,pos p)
+        VAR pos pDir_hat;
+        VAR pos mPos;
+        VAR pos mPos_hat;
+        VAR num mPosNorm;
+        VAR num l;
+        pDir_hat:=NormalizePos(l2-l1);
+        mPos:=p-l1;
+        mPos_hat:=NormalizePos(mPos);
+        mPosNorm:=VectMagn(mPos);
+        l:=DotProd(l2-l1,p-l1)/VectMagn(l2-l1);
+        IF l>VectMagn(l2-l1) THEN
+            !TPWrite "After path";
+            RETURN VectMagn(l2-p);
+        ELSEIF l<0 THEN
+            !TPWrite "Before path";
+            RETURN VectMagn(l1-p);
+        ELSE
+            !TPWrite "On path";
+            RETURN VectMagn(mPos-DotProd(pDir_hat,mPos_hat)*mPosNorm*pDir_hat);
+        ENDIF
+    ENDFUNC
+
+    TRAP CollDetectedTrap
+        RAISE YUMILIB_COLL_DETECTED;
+    ERROR
+        RAISE ;
+    ENDTRAP
+
+    !Reads all vision values for specified tool
+    PROC ReadVisionValues(string sToolName,INOUT pos CameraResult{*},INOUT num nNumberFound)
+        VAR string sIndex;
+        VAR num nX;
+        VAR num nY;
+        VAR num nAngle;
+        VAR num nNoFound;
+        !VAR string sToolName:="Pattern_3";
+        CamGetParameter HandCameraR,sToolName+".Number_Found"\NumVar:=nX;
+        nNoFound:=nX;
+        nNumberFound:=0;
+        FOR i FROM 1 TO nNoFound DO
+            IF i=1 THEN
+                sIndex:="";
+            ELSE
+                sIndex:=NumToStr(i-1,0);
+            ENDIF
+            CamGetParameter HandCameraR,sToolName+".Fixture"+sIndex+".X"\NumVar:=nX;
+            CamGetParameter HandCameraR,sToolName+".Fixture"+sIndex+".Y"\NumVar:=nY;
+            CamGetParameter HandCameraR,sToolName+".Fixture"+sIndex+".Angle"\NumVar:=nAngle;
+            IF nX<>0 AND nY<>0 AND nAngle<>0 THEN
+                Incr nNumberFound;
+                CameraResult{nNumberFound}:=[nX,nY,nAngle];
+            ENDIF
+        ENDFOR
+    ENDPROC
+
+    PROC ReadVisionValues2(string sToolName,num nSceneId,INOUT pos CameraResult{*},INOUT num nNumberFound)
+        VAR cameratarget camResult;
+        nNumberFound:=0;
+        WHILE TRUE DO
+            CamGetResult HandCameraR,camResult\SceneId:=nSceneId\MaxTime:=1;
+            IF camResult.cframe.trans<>[0,0,0] THEN
+                Incr nNumberFound;
+                CameraResult{nNumberFound}:=[camResult.cframe.trans.x,camResult.cframe.trans.y,EulerZYX(\Z,camResult.cframe.rot)];
+            ENDIF
+        ENDWHILE
+    ERROR
+        IF ERRNO=ERR_CAM_NO_MORE_DATA OR ERRNO=ERR_CAM_MAXTIME THEN
+            !No more results
+            RETURN ;
+        ENDIF
+    ENDPROC
+
+
+ENDMODULE
