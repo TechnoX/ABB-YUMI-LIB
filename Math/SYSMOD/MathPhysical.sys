@@ -1,0 +1,817 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE MathPhysical(SYSMODULE,NOVIEW)
+    LOCAL CONST num jointlimits{7,2}:=[[-168.5,168.5],[-143.5,43.5],[-123.5,80],[-290,290],[-88,138],[-229,229],[-168.5,168.5]];
+
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcDistanceToStop                       *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calculate the distance to closest        *
+    !*               mechanical stop                          *
+    !*                                                        *
+    !* IN:           jointtarget: the jointsol to evaluate    *
+    !*                                                        *
+    !* RETURN:       num                                      *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    LOCAL FUNC num CalcDistanceToStop(
+      jointtarget jointsol)
+        !Calculate the distance to closest mechanical stop
+        VAR num sol_dist{7};
+        VAR num smallest;
+
+        sol_dist{1}:=(jointlimits{1,2}-jointlimits{1,1})/2-abs(jointsol.robax.rax_1-(jointlimits{1,2}+jointlimits{1,1})/2);
+        sol_dist{2}:=(jointlimits{2,2}-jointlimits{2,1})/2-abs(jointsol.robax.rax_2-(jointlimits{2,2}+jointlimits{2,1})/2);
+        sol_dist{3}:=(jointlimits{3,2}-jointlimits{3,1})/2-abs(jointsol.robax.rax_3-(jointlimits{3,2}+jointlimits{3,1})/2);
+        sol_dist{4}:=(jointlimits{4,2}-jointlimits{4,1})/2-abs(jointsol.robax.rax_4-(jointlimits{4,2}+jointlimits{4,1})/2);
+        sol_dist{5}:=(jointlimits{5,2}-jointlimits{5,1})/2-abs(jointsol.robax.rax_5-(jointlimits{5,2}+jointlimits{5,1})/2);
+        sol_dist{6}:=(jointlimits{6,2}-jointlimits{6,1})/2-abs(jointsol.robax.rax_6-(jointlimits{6,2}+jointlimits{6,1})/2);
+        sol_dist{7}:=(jointlimits{7,2}-jointlimits{7,1})/2-abs(jointsol.extax.eax_a-(jointlimits{7,2}+jointlimits{7,1})/2);
+
+        smallest:=sol_dist{1};
+        FOR i FROM 2 TO 7 DO
+            IF sol_dist{i}<smallest THEN
+                smallest:=sol_dist{i};
+            ENDIF
+        ENDFOR
+        RETURN smallest;
+    ENDFUNC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcJointDistance                        *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calculates the norm of the distance      *
+    !*               between arguments jt1 and jt2, in angles *
+    !*                                                        *
+    !* IN:           jointtarget: the 2 targets to calculate  *
+    !*                            distance between            *
+    !*                                                        *
+    !* OPTIONAL:     MainAxes: If passed, only use the main   *
+    !*                         axis (excludes the wrist axes) *
+    !*                                                        *
+    !* RETURN:       num: the distance                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC num CalcJointDistance(
+      \switch MainAxes,
+      jointtarget jt1,
+      jointtarget jt2)
+
+        VAR num dist{7};
+        VAR num sqsum;
+
+        dist{1}:=jt1.robax.rax_1-jt2.robax.rax_1;
+        dist{2}:=jt1.robax.rax_2-jt2.robax.rax_2;
+        dist{3}:=jt1.robax.rax_3-jt2.robax.rax_3;
+        dist{4}:=jt1.robax.rax_4-jt2.robax.rax_4;
+        dist{5}:=jt1.robax.rax_5-jt2.robax.rax_5;
+        dist{6}:=jt1.robax.rax_6-jt2.robax.rax_6;
+        dist{7}:=jt1.extax.eax_a-jt2.extax.eax_a;
+        IF present(MainAxes) THEN
+            dist{4}:=0;
+            dist{5}:=0;
+            dist{6}:=0;
+        ENDIF
+        FOR i FROM 1 TO 7 DO
+            sqsum:=sqsum+dist{i}*dist{i};
+        ENDFOR
+        RETURN sqrt(sqsum);
+    ENDFUNC
+    
+    
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcSingAreapoint                        *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calculates a robtarget, where            *
+    !*               joint values for wrist are given         *
+    !*               instead of rotation.                     *
+    !*               Use to estimate where motions with       *
+    !*               singarea\wrist will bring the robot.     *
+    !*                                                        *
+    !* IN:           targetPoint: The target point            *
+    !*               startAngles: The start angles            *
+    !*               tool: The used tool                      *
+    !*               num ax4: Don't know...                   *
+    !*               num ax5: Don't know...                   *
+    !*               num ax6: Don't know...                   *
+    !*                                                        *
+    !* OPTIONAL:     num WObj: Don't know...                  *
+    !*               num jointsol: Don't know...              *
+    !*                                                        *
+    !* RETURN:       robtarget: Don't know ...                *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC robtarget CalcSingAreapoint(
+      robtarget targetPoint,
+      jointtarget startAngles,
+      PERS tooldata Tool,
+      num ax4,
+      num ax5,
+      num ax6
+      \PERS wobjdata WObj
+      \VAR jointtarget jointsol)
+
+        VAR jointtarget jtm;
+        VAR jointtarget updated_jtm;
+        !VAR jointtarget jtstart;
+        VAR robtarget singAreapoint;
+        VAR robtarget startPoint;
+        VAR robtarget newTargetPoint;
+        VAR num iter;
+        VAR dnum numJac{4,4};
+        VAR dnum x{4};
+        VAR num x_corr{4};
+        VAR num x_corr2{4};
+        VAR dnum b{4};
+        VAR bool status;
+        VAR num lastErrNorm;
+        VAR num ErrNorm;
+        VAR num scale;
+
+        !jtm:=CalcJointT(startpoint,Tool \WObj?WObj);
+        jtm:=startAngles;
+        !Incase the correct solution is found in the starting guess
+        jtm.robax.rax_4:=ax4;
+        jtm.robax.rax_5:=ax5;
+        jtm.robax.rax_6:=ax6;
+        singAreapoint:=CalcRobt(jtm,Tool\WObj?WObj);
+        startPoint:=singAreapoint;
+        lastErrNorm:=VectMagn(targetPoint.trans-singAreapoint.trans);
+        ErrNorm:=lastErrNorm;
+        WHILE ErrNorm>1 DO
+            !calc error
+            status:=CalcSingAreapointErr(targetPoint,Tool,jtm,b\WObj?WObj);
+            !calc numerical jacobian
+            status:=CalcSingAreapointNumJac(targetPoint,Tool,jtm,numJac\WObj?WObj);
+            !Solve for correction
+            MatrixSolve numJac\A_m:=4\A_n:=4,b,x;
+            FOR i FROM 1 TO 4 DO
+                x_corr{i}:=dnumtonum(x{i});
+            ENDFOR
+
+            !update jtm with correction
+            lastErrNorm:=dnumtonum(NormDnum(b));
+            ErrNorm:=lastErrNorm+1;
+            scale:=2;
+            IF iter=0 scale:=1;
+            updated_jtm:=jtm;
+            WHILE ErrNorm>lastErrNorm AND scale>0.2 DO
+                scale:=scale/2;
+                updated_jtm.robax.rax_1:=jtm.robax.rax_1-dnumtonum(x{1})*scale;
+                updated_jtm.robax.rax_2:=jtm.robax.rax_2-dnumtonum(x{2})*scale;
+                updated_jtm.robax.rax_3:=jtm.robax.rax_3-dnumtonum(x{3})*scale;
+                updated_jtm.extax.eax_a:=jtm.extax.eax_a-dnumtonum(x{4})*scale;
+                !singAreapoint:=CalcRobt(updated_jtm,Tool \WObj?WObj);
+                status:=CalcSingAreapointErr(targetPoint,Tool,updated_jtm,b\WObj?WObj);
+                ErrNorm:=dnumtonum(NormDnum(b));
+            ENDWHILE
+            jtm:=updated_jtm;
+
+            singAreapoint:=CalcRobt(jtm,Tool\WObj?WObj);
+            !lastErrNorm:=ErrNorm;
+            !ErrNorm:=VectMagn(targetPoint.trans-singAreapoint.trans);
+            IF scale<0.2 THEN
+                !The last iteration did not converge, attemot smaller step
+                newTargetPoint.trans.x:=(targetPoint.trans.x+startPoint.trans.x)/2;
+                newTargetPoint.trans.y:=(targetPoint.trans.y+startPoint.trans.y)/2;
+                newTargetPoint.trans.z:=(targetPoint.trans.z+startPoint.trans.z)/2;
+                newTargetPoint.extax.eax_a:=(targetPoint.extax.eax_a+startPoint.extax.eax_a)/2;
+
+                singAreapoint:=CalcSingAreapoint(newTargetPoint,startAngles,Tool,ax4,ax5,ax6\WObj?WObj\jointsol:=startAngles);
+                !jtm:=startAngles;
+                jtm.robax.rax_1:=startAngles.robax.rax_1;
+                jtm.robax.rax_2:=startAngles.robax.rax_2;
+                jtm.robax.rax_3:=startAngles.robax.rax_3;
+                jtm.extax.eax_a:=startAngles.extax.eax_a;
+            ENDIF
+            iter:=iter+1;
+            IF iter>10 THEN
+                !RAISE AsimovError;
+                RETURN [[0,0,0],[0,0,0,0],[0,0,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+            ENDIF
+        ENDWHILE
+        IF present(jointsol) THEN
+            jointsol:=jtm;
+        ENDIF
+        !Check that the solution is within working range
+        IF Calcdistancetostop(jtm)<2 THEN
+            !the point is outside or close to joint limits
+            IF present(jointsol) THEN
+                jointsol:=startAngles;
+            ENDIF
+            singAreapoint:=targetPoint;
+        ENDIF
+        RETURN singAreapoint;
+    ENDFUNC
+
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcSingAreapointNumJac                  *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know ...                           *
+    !*                                                        *
+    !* IN:           tp: Don't know                           *
+    !*               Tool: Don't know                         *
+    !*               jmt: Don't know                          *
+    !*               numJac: Don't know                       *
+    !*                                                        *
+    !* OPTIONAL:     WObj: Don't know                         *
+    !*                                                        *
+    !* RETURN:       bool: Always TRUE !?                     *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    LOCAL FUNC bool CalcSingAreapointNumJac(
+      robtarget tp,
+      PERS tooldata Tool,
+      jointtarget jtm,
+      VAR dnum numJac{*,*}
+      \PERS wobjdata WObj)
+
+        VAR jointtarget jtp;
+        VAR dnum dh:=1e-4;
+        VAR num h:=1e-4;
+        VAR dnum ls{4};
+        VAR dnum rs{4};
+        VAR bool status;
+
+        jtp:=jtm;
+        jtp.robax.rax_1:=jtp.robax.rax_1-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.robax.rax_1:=jtp.robax.rax_1+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,1}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        jtp:=jtm;
+        jtp.robax.rax_2:=jtp.robax.rax_2-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.robax.rax_2:=jtp.robax.rax_2+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,2}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        jtp:=jtm;
+        jtp.robax.rax_3:=jtp.robax.rax_3-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.robax.rax_3:=jtp.robax.rax_3+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,3}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        jtp:=jtm;
+        jtp.extax.eax_a:=jtp.extax.eax_a-h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,ls\WObj?WObj);
+        jtp.extax.eax_a:=jtp.extax.eax_a+2*h;
+        status:=CalcSingAreapointErr(tp,Tool,jtp,rs\WObj?WObj);
+        FOR i FROM 1 TO 4 DO
+            numJac{i,4}:=(rs{i}-ls{i})/(2*dh);
+        ENDFOR
+        RETURN TRUE;
+    ENDFUNC
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcSingAreapointErr                     *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know ...                           *
+    !*                                                        *
+    !* IN:           tp: Don't know                           *
+    !*               Tool: Don't know                         *
+    !*               jmt: Don't know                          *
+    !*               b: Don't know                       *
+    !*                                                        *
+    !* OPTIONAL:     WObj: Don't know                         *
+    !*                                                        *
+    !* RETURN:       bool: Always TRUE !?                     *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    LOCAL FUNC bool CalcSingAreapointErr(
+      robtarget tp,
+      PERS tooldata Tool,
+      jointtarget jtm,
+      VAR dnum b{*}
+      \PERS wobjdata WObj)
+
+        VAR robtarget sp;
+        VAR num ArmAngleErr;
+
+        sp:=CalcRobt(jtm,Tool\WObj?WObj);
+
+        ArmAngleErr:=tp.extax.eax_a-sp.extax.eax_a;
+        IF abs(ArmAngleErr)>180 THEN
+            ArmAngleErr:=Modulo(tp.extax.eax_a,360)-Modulo(sp.extax.eax_a,360);
+        ENDIF
+
+        b:=[numtodnum(tp.trans.x-sp.trans.x),
+      numtodnum(tp.trans.y-sp.trans.y),
+      numtodnum(tp.trans.z-sp.trans.z),
+      numtodnum(ArmAngleErr)];
+        RETURN TRUE;
+    ENDFUNC
+    
+    
+    
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: PoseRelTool                              *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  I think it returns the pose relative to  *
+    !*               mPose with dx, dy, dz and possibly RxRyRz*
+    !*               added relative to the tool.              *
+    !*                                                        *
+    !* IN:           mPose: The pose of the tool              *
+    !*               dx,dy,dz: Displacement                   *
+    !*               Rx,Ry,Rz: Rotation                       *
+    !*                                                        *
+    !* RETURN:       pose: The new pose                       *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC pose PoseRelTool(pose mPose,num dx,num dy,num dz,\num Rx,\num Ry,\num Rz)
+        VAR robtarget mRobtarget;
+        VAR pose retPose;
+        mRobTarget.trans:=mPose.trans;
+        mRobTarget.rot:=mPose.rot;
+        mRobTarget:=RelTool(mRobTarget,dx,dy,dz\Rx?Rx\Ry?Ry\Rz?Rz);
+        retPose.trans:=mRobTarget.trans;
+        retPose.rot:=mRobTarget.rot;
+        RETURN retPose;
+    ENDFUNC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: ReCalcRobT                               *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Use this function to recalculate a       *
+    !*               robtarget from one tool or workobject    *
+    !*               to a different tool or workobject.       *
+    !*               The robot will move to the exact same    *
+    !*               position, i.e                            *
+    !*               MoveL point, told\wobj:=wobjold;         *
+    !*               and                                      *
+    !*               MoveL RecalcRobT(point,tol,tnew,wold,wnew),tnew\wobj:=wnew;
+    !*               both move the robot to the exact same    *
+    !*               position.                                *
+    !*                                                        *
+    !* IN:           point: The target position               *
+    !*               told: Old tool                           *
+    !*               tnew: New tool                           *
+    !*               wold: Old work object                    *
+    !*               wnew: New work object                    *
+    !*                                                        *
+    !* RETURN:       robtarget: The new target position       *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC robtarget ReCalcRobT(
+    robtarget point,
+    PERS tooldata told,
+    PERS tooldata tnew,
+    PERS wobjdata wold,
+    PERS wobjdata wnew)
+
+        VAR pose ppnt:=[[0,0,0],[1,0,0,0]];
+        VAR pose ppntnew:=[[0,0,0],[1,0,0,0]];
+        VAR pose pb:=[[0,0,0],[1,0,0,0]];
+        VAR pose pa:=[[0,0,0],[1,0,0,0]];
+
+        ppnt:=[point.trans,point.rot];
+        pa:=PoseMult(PoseInv(PoseMult(wnew.uframe,wnew.oframe)),PoseMult(wold.uframe,wold.oframe));
+        pb:=PoseMult(ppnt,PoseMult(PoseInv(told.tframe),tnew.tframe));
+        ppntnew:=PoseMult(pa,pb);
+        RETURN [ppntnew.trans,ppntnew.rot,point.robconf,point.extax];
+    ENDFUNC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: ReCalcPose                               *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Use this function to recalculate a pose  *
+    !*               from one tool or workobject to a         *
+    !*               different tool or workobject.            *
+    !*               This is a pose equivalent to ReCalcRobT  *
+    !*                                                        *
+    !* IN:           robtarget: The target position           *
+    !*               told: Old tool                           *
+    !*               tnew: New tool                           *
+    !*               wold: Old work object                    *
+    !*               wnew: New work object                    *
+    !*                                                        *
+    !* RETURN:       pose: The new target position            *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC pose ReCalcPose(
+    robtarget point,
+    PERS tooldata told,
+    PERS tooldata tnew,
+    PERS wobjdata wold,
+    PERS wobjdata wnew)
+
+        VAR pose ppnt:=[[0,0,0],[1,0,0,0]];
+        VAR pose ppntnew:=[[0,0,0],[1,0,0,0]];
+        VAR pose pb:=[[0,0,0],[1,0,0,0]];
+        VAR pose pa:=[[0,0,0],[1,0,0,0]];
+
+        ppnt:=[point.trans,point.rot];
+        pa:=PoseMult(PoseInv(PoseMult(wnew.uframe,wnew.oframe)),PoseMult(wold.uframe,wold.oframe));
+        pb:=PoseMult(ppnt,PoseMult(PoseInv(told.tframe),tnew.tframe));
+        ppntnew:=PoseMult(pa,pb);
+        RETURN ppntnew;
+    ENDFUNC
+
+    
+    
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: AlignPose                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Align a pose to a given coordinate axis  *
+    !*                                                        *
+    !* IN:           p1: The current (non-aligned) pose       *
+    !*               toolAxis: The axis we want to alignt to  *
+    !*               baseAxis: Don't know ... :(              *
+    !*                                                        *
+    !* RETURN:       The new pose we should move to, to be    *
+    !*               aligned.                                 *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC pose AlignPose(pose p1,pos toolAxis,pos baseAxis)
+        VAR pos toolAxis_base;
+        VAR pos rotAxis;
+        VAR num Angle;
+        VAR pose mPose;
+        toolAxis_base:=PoseVect([[0,0,0],p1.rot],toolAxis);
+        !Calculate the rotation angle
+        Angle:=-acos(DotProd(toolAxis_base,baseAxis));
+        rotAxis:=CrossProduct(baseAxis,toolAxis_base);
+        !Convert to quaternion
+        mPose.rot:=NOrient(AxisAngletoQuat(rotAxis,Angle));
+        RETURN PoseMult([p1.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],p1.rot]));
+    ENDFUNC
+
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcMidPoint                             *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calcultates the point in the middle      *
+    !*               between p1 and p2?? Maybe ... !?         *
+    !*                                                        *
+    !* IN:           p1: First target                         *
+    !*               p2: Second target                        *
+    !*               tool: The tool that is used              *
+    !*                                                        *
+    !* RETURN:       The target in the middle of p1 and p2?   *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC robtarget CalcMidPoint(robtarget p1,robtarget p2,PERS tooldata tool)
+        VAR num nAx4Dist;
+        VAR num nAx5Dist;
+        VAR num nAx6Dist;
+        VAR num nMaxRollDist;
+        VAR num b;
+        VAR jointtarget jt1;
+        VAR jointtarget jt2;
+        VAR num nAx4Mid;
+        VAR num nAx5Mid;
+        VAR num nAx6Mid;
+        VAR robtarget pMid;
+        VAR robtarget pRetTarget;
+        VAR num nMid;
+
+        jt1:=CalcJointT(p1,tool);
+        jt2:=CalcJointT(p2,tool);
+        nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+        nAx5Dist:=jt2.robax.rax_5-jt1.robax.rax_5;
+        nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+        nMaxRollDist:=Max(Abs(nAx4Dist),Abs(nAx6Dist));
+        b:=Max(nMaxRollDist-Abs(nAx5Dist),0);
+        !nMid:=(nMaxRollDist-jt2.robax.rax_5)/nMaxRollDist;
+        nMid:=0.5;
+        nAx4Mid:=nMid*(jt2.robax.rax_4+jt1.robax.rax_4);
+        nAx6Mid:=nMid*(jt2.robax.rax_6+jt1.robax.rax_6);
+        pMid.trans:=nMid*(p1.trans+p2.trans);
+        pMid.extax.eax_a:=nMid*(p1.extax.eax_a+p2.extax.eax_a);
+        pMid.robconf:=p1.robconf;
+        pRetTarget:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,1,nAx6Mid);
+
+        RETURN pRetTarget;
+    ENDFUNC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcMidPoint                             *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calcultates the point in the middle      *
+    !*               between p1 and p2?? Maybe ... !?         *
+    !*                                                        *
+    !* IN:           p1: First target                         *
+    !*               p2: Second target                        *
+    !*               tool: The tool that is used              *
+    !*               retRobT2: Don't know ... ?!              *
+    !*                                                        *
+    !* RETURN:       The target in the middle of p1 and p2?   *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC robtarget CalcMidPointDouble(robtarget p1,robtarget p2,PERS tooldata tool,VAR robtarget retRobT2)
+        VAR num nAx4Dist;
+        VAR num nAx5Dist;
+        VAR num nAx6Dist;
+        VAR num nMaxRollDist;
+        VAR num b;
+        VAR jointtarget jt1;
+        VAR jointtarget jt2;
+        VAR num nAx4Mid;
+        VAR num nAx5Mid;
+        VAR num nAx6Mid;
+        VAR robtarget pMid;
+        VAR robtarget pRetTarget;
+        VAR num nMid1;
+        VAR num nMid2;
+
+        jt1:=CalcJointT(p1,tool);
+        jt2:=CalcJointT(p2,tool);
+        nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+        nAx5Dist:=jt2.robax.rax_5-jt1.robax.rax_5;
+        nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+        nMaxRollDist:=Max(Abs(nAx4Dist),Abs(nAx6Dist));
+        b:=Max(nMaxRollDist-Abs(nAx5Dist),0);
+        nMid1:=(jt1.robax.rax_5)/nMaxRollDist;
+        !nMid:=0.5;
+        nAx4Mid:=nMid1*(jt2.robax.rax_4-jt1.robax.rax_4)+jt1.robax.rax_4;
+        nAx6Mid:=nMid1*(jt2.robax.rax_6-jt1.robax.rax_6)+jt1.robax.rax_6;
+        pMid.trans:=nMid1*(p2.trans-p1.trans)+p1.trans;
+        pMid.extax.eax_a:=nMid1*(p2.extax.eax_a-p1.extax.eax_a)+p1.extax.eax_a;
+        pMid.robconf:=p1.robconf;
+        pRetTarget:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,1,nAx6Mid);
+
+        nMid2:=(nMaxRollDist-jt2.robax.rax_5)/nMaxRollDist;
+        !nMid:=0.5;
+        nAx4Mid:=nMid2*(jt2.robax.rax_4-jt1.robax.rax_4)+jt1.robax.rax_4;
+        nAx6Mid:=nMid2*(jt2.robax.rax_6-jt1.robax.rax_6)+jt1.robax.rax_6;
+        pMid.trans:=nMid2*(p2.trans-p1.trans)+p1.trans;
+        pMid.extax.eax_a:=nMid2*(p2.extax.eax_a-p1.extax.eax_a)+p1.extax.eax_a;
+        pMid.robconf:=p1.robconf;
+        retRobT2:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,1,nAx6Mid);
+        RETURN pRetTarget;
+    ENDFUNC
+
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: OptimizeArmAngle                         *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Attempt to optimize arm angle to get up  *
+    !*               to 10 degrees distance to mechanical stop*
+    !*                                                        *
+    !* IN:           solution1: Don't know ...                *
+    !*               Tool: Don't know ...                     *
+    !*                                                        *
+    !* OPTIONAL:     WObj: Don't know ...                     *
+    !*               retDistance: Don't know ...              *
+    !*               jointSol: Don't know ...                 *
+    !*                                                        *
+    !* RETURN:       robtarget: Don't know ...                *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC robtarget OptimizeArmAngle(
+      robtarget solution1,
+      PERS tooldata Tool,
+      \PERS wobjdata WObj,
+	  \VAR num retDistance,
+	  \VAR jointtarget jointSol)
+
+        VAR robtarget solution2;
+        VAR jointtarget jt;
+        VAR jointtarget jt2;
+        VAR num distance:=10;
+        VAR num Anglex;
+        VAR num n_retry;
+        VAR num origArmAngle;
+        VAR num iter;
+        VAR num currentDist;
+        VAR bool errorOccured:=FALSE;
+        VAR num angleCorrection;
+        VAR num AngleErr;
+        VAR num AngleErrDiff;
+
+
+
+        origArmAngle:=solution1.extax.eax_a;
+        solution2:=solution1;
+        Start:
+        errorOccured:=FALSE;
+        iter:=0;
+
+
+        !Check if target is reachable
+        jt:=CalcJointT(solution1,Tool\WObj?WObj\ErrorNumber:=myerrno);
+        n_retry:=2;
+        Anglex:=solution1.extax.eax_a;
+        !TPWrite "Attempting to optimize arm angle";
+        currentDist:=OptimizeArmAngleErr(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+
+        IF CalcDistancetoStop(jt)<distance THEN
+            WHILE iter<4 AND currentDist<-0.5 DO
+                !TPWrite "x="\Num:=x;
+                AngleErr:=OptimizeArmAngleErr(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+                AngleErrDiff:=OptimizeArmAngleErrDiff(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+                IF Abs(AngleErrDiff)>1e-2 THEN
+                    angleCorrection:=AngleErr/AngleErrDiff;
+                    IF abs(angleCorrection)>30 THEN
+                        !nearly singluar problem, take smaller step
+                        angleCorrection:=Sign(angleCorrection)*30;
+                    ENDIF
+                    Anglex:=Modulo(Anglex-angleCorrection+180,360)-180;
+                    iter:=iter+1;
+                    currentDist:=OptimizeArmAngleErr(Anglex,solution1,Tool\WObj?WObj,distance,jt);
+                ELSE
+                    iter:=4;
+                ENDIF
+            ENDWHILE
+        ENDIF
+        !TPWrite "x="\Num:=x;
+        solution2.extax.eax_a:=Modulo(Anglex+180,360)-180;
+        !check that situation was improved by optimization
+        jt2:=CalcJointT(solution2,Tool\WObj?WObj\ErrorNumber:=myerrno);
+        IF CalcDistancetoStop(jt)>CalcDistancetoStop(jt2) THEN
+            IF present(retDistance)
+			retDistance:=CalcDistancetoStop(jt);
+            IF Present(jointSol) jointSol:=jt;
+            RETURN solution1;
+        ENDIF
+        solution2:=CalcRobT(jt2,Tool\WObj?WObj);
+        solution2.trans:=solution1.trans;
+        solution2.rot:=solution1.rot;
+        IF present(retDistance)
+			retDistance:=CalcDistancetoStop(jt2);
+        IF Present(jointSol) jointSol:=jt2;
+        RETURN solution2;
+    ERROR
+        errorOccured:=TRUE;
+        IF ERRNO=ERR_ROBLIMIT THEN
+            IF n_retry=0 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle+10;
+            ELSEIF n_retry=1 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle-10;
+            ELSEIF n_retry=2 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle;
+                Anglex:=origArmAngle;
+                distance:=distance/2;
+            ELSEIF n_retry=3 THEN
+                n_retry:=n_retry+1;
+                solution1.extax.eax_a:=origArmAngle;
+                Anglex:=origArmAngle;
+                distance:=distance/2;
+            ELSE
+                RAISE AsimovError;
+            ENDIF
+            SkipWarn;
+            TRYNEXT;
+        ENDIF
+        RAISE AsimovError;
+    ENDFUNC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: OptimizeArmAngleErr                      *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know                               *
+    !*                                                        *
+    !* IN:           armAngle: Don't know ...                 *
+    !*               solution: Don't know ...                 *
+    !*               Tool: Don't know ...                     *
+    !*               WObj: Don't know ...                     *
+    !*               goal: Don't know ...                     *
+    !*               startGuess: Don't know ...               *
+    !*                                                        *
+    !* RETURN:       num: Don't know ...                      *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    LOCAL FUNC num OptimizeArmAngleErr(
+      num armAngle,
+      robtarget solution,
+      PERS tooldata Tool,
+      \PERS wobjdata WObj,
+      num goal,
+	  jointtarget startGuess)
+
+        solution.extax.eax_a:=armAngle;
+        RETURN CalcDistanceToStop(CalcJointT(solution,Tool\WObj?WObj\ErrorNumber:=myerrno))-goal;
+    ERROR
+        RAISE ;
+    ENDFUNC
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: OptimizeArmAngleErrDiff                  *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know                               *
+    !*                                                        *
+    !* IN:           armAngle: Don't know ...                 *
+    !*               solution: Don't know ...                 *
+    !*               Tool: Don't know ...                     *
+    !*               WObj: Don't know ...                     *
+    !*               goal: Don't know ...                     *
+    !*               startGuess: Don't know ...               *
+    !*                                                        *
+    !* RETURN:       num: Don't know ...                      *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    LOCAL FUNC num OptimizeArmAngleErrDiff(
+      num armAngle,
+      robtarget solution,
+      PERS tooldata Tool,
+      \PERS wobjdata WObj,
+      num goal,
+	  jointtarget startGuess)
+
+        VAR num dist1;
+        VAR num dist2;
+        VAR num h;
+        h:=1e-3;
+        solution.extax.eax_a:=armAngle-h;
+        dist1:=CalcDistanceToStop(CalcJointT(solution,Tool\WObj?WObj\ErrorNumber:=myerrno))-goal;
+        solution.extax.eax_a:=armAngle+h;
+        dist2:=CalcDistanceToStop(CalcJointT(solution,Tool\WObj?WObj\ErrorNumber:=myerrno))-goal;
+        RETURN (dist2-dist1)/(2*h);
+    ERROR
+        RAISE ;
+    ENDFUNC
+
+
+ENDMODULE
