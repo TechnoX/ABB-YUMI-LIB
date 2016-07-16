@@ -22,6 +22,8 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
     
+    ! NOTE!!!! This is now splitted in two files, here and in MathCamera as well... 
+    !TASK PERS num Calibrated:=1;
     
     !**********************************************************
     !*                                                        *
