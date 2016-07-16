@@ -3,7 +3,7 @@
     LANGUAGE:ENGLISH
 %%%
 
-MODULE MathCamera(SYSMODULE,NOVIEW)
+MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !**********************************************************
     !*                                                        *
     !* Module name: MathCamera                                *
