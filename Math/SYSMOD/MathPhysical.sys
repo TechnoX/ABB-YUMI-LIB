@@ -365,35 +365,8 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     ENDFUNC
 
 
-    !**********************************************************
-    !*                                                        *
-    !* ROUTINE NAME: PoseRelTool                              *
-    !*                                                        *
-    !**********************************************************
-    !*                                                        *
-    !* DESCRIPTION:  I think it returns the pose relative to  *
-    !*               mPose with dx, dy, dz and possibly RxRyRz*
-    !*               added relative to the tool.              *
-    !*                                                        *
-    !* IN:           mPose: The pose of the tool              *
-    !*               dx,dy,dz: Displacement                   *
-    !*               Rx,Ry,Rz: Rotation                       *
-    !*                                                        *
-    !* RETURN:       pose: The new pose                       *
-    !*                                                        *
-    !* Date:        Version:   Programmer:          Reason:   *
-    !* 2016-07-15   1.0        Ivan Lundberg        created   *
-    !**********************************************************
-    FUNC pose PoseRelTool(pose mPose,num dx,num dy,num dz,\num Rx,\num Ry,\num Rz)
-        VAR robtarget mRobtarget;
-        VAR pose retPose;
-        mRobTarget.trans:=mPose.trans;
-        mRobTarget.rot:=mPose.rot;
-        mRobTarget:=RelTool(mRobTarget,dx,dy,dz\Rx?Rx\Ry?Ry\Rz?Rz);
-        retPose.trans:=mRobTarget.trans;
-        retPose.rot:=mRobTarget.rot;
-        RETURN retPose;
-    ENDFUNC
+
+
 
     !**********************************************************
     !*                                                        *
