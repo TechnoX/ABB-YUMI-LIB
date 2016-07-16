@@ -15,7 +15,8 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !* Calculations that depends on physical understanding of *
     !* the system. This file will probably only work on YuMi  *
     !* while MathPure will work for all robots.               *
-    !*                                                        *
+    !* Note that nothing in this module should move the robot *
+    !* in any way. This is just pure calculations.            *
     !*                                                        *
     !* DEPENDENCIES: MathPure                                 *
     !*                                                        *
@@ -656,6 +657,9 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !*                                                        *
     !* RETURN:       robtarget: Don't know ...                *
     !*                                                        *
+    !* ASSUMPTIONS:  AsimovError: Is used to raise errors     *
+    !*               myerrno: Is used somehow...              *
+    !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
     !**********************************************************
@@ -777,6 +781,8 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !*                                                        *
     !* RETURN:       num: Don't know ...                      *
     !*                                                        *
+    !* ASSUMPTIONS:  myerrno: Is used somehow...              *
+    !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
     !**********************************************************
@@ -811,6 +817,8 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !*               startGuess: Don't know ...               *
     !*                                                        *
     !* RETURN:       num: Don't know ...                      *
+    !*                                                        *
+    !* ASSUMPTIONS:  myerrno: Is used somehow...              *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
