@@ -22,7 +22,9 @@ MODULE MathCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
     
+    TASK PERS wobjdata calwobj:=[FALSE,TRUE,"",[[427.52,-170.005,400.103],[0.355326,-0.325694,-0.632327,-0.606489]],[[0,0,0],[1,0,0,0]]];
     
+    TASK PERS num Calibrated:=1;
     
     
     !**********************************************************
@@ -1339,6 +1341,7 @@ MODULE MathCamera(SYSMODULE,NOVIEW)
             RETRY;
         ENDIF
     ENDPROC
+    
     
     
     !**********************************************************
