@@ -25,7 +25,7 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
     
-    LOCAL CONST num jointlimits{7,2}:=[[-168.5,168.5],[-143.5,43.5],[-123.5,80],[-290,290],[-88,138],[-229,229],[-168.5,168.5]];
+    CONST num jointlimits{7,2}:=[[-168.5,168.5],[-143.5,43.5],[-123.5,80],[-290,290],[-88,138],[-229,229],[-168.5,168.5]];
 
     ! This doesn't mean anything??? Not very good variable names ... ;-)
     VAR errnum myerrno:=0;
@@ -48,7 +48,7 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
     !**********************************************************
-    LOCAL FUNC num CalcDistanceToStop(
+    FUNC num CalcDistanceToStop(
       jointtarget jointsol)
         !Calculate the distance to closest mechanical stop
         VAR num sol_dist{7};
