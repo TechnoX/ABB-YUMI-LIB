@@ -577,7 +577,7 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
 
     !**********************************************************
     !*                                                        *
-    !* ROUTINE NAME: CalcMidPoint                             *
+    !* ROUTINE NAME: CalcMidPointDouble                       *
     !*                                                        *
     !**********************************************************
     !*                                                        *
