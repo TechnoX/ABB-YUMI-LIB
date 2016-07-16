@@ -4,6 +4,23 @@
 %%%
 
 MODULE MathCamera(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: MathCamera                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* Calculations that is specific for cameras.             *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: MathPure, MiscCamera, MathPhysical       *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik Löfgren      created   *
+    !**********************************************************
     
     
     

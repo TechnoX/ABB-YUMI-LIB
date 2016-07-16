@@ -4,6 +4,26 @@
 %%%
 
 MODULE MiscMove(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: MiscMove                                  *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* Various functions for moving the robot. For example    *
+    !* simplifications of the move instruction so you don't   *
+    !* need to decide when to use MoveL, MoveJ etc.           *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: MathPure                                 *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik Löfgren      created   *
+    !**********************************************************
+
     
     !**********************************************************
     !*                                                        *

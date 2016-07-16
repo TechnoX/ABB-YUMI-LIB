@@ -4,6 +4,23 @@
 %%%
 
 MODULE MiscCamera(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: MiscCamera                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* Various functions for managing / handling the cameras  *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: <Modules that this depend on>            *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik Löfgren      created   *
+    !**********************************************************
     
     
     !**********************************************************

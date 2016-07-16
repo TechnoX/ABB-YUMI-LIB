@@ -4,7 +4,27 @@
 %%%
 
 MODULE MathPure(SYSMODULE,NOVIEW)
-
+    !**********************************************************
+    !*                                                        *
+    !* Module name: MathPure                                  *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* A pure math module that doesn't depend on the type of  *
+    !* robot used. This is just pure math calculations.       *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: -                                        *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik Löfgren      created   *
+    !**********************************************************
+    
+    
+    
     
     !**********************************************************
     !*                                                        *
