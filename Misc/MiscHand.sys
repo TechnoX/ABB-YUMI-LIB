@@ -1,0 +1,133 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE MiscHand(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: MiscHand                                  *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* Various functions for the hand. For example open and   *
+    !* close the hand.                                        *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES:                                          *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik LÃ¶fgren      created   *
+    !**********************************************************
+
+    PERS loaddata YuMi_App_SelLoadL:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
+    PERS loaddata YuMi_App_SelLoadR:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: OpenHand                                 *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Opens the hand                           *
+    !*                                                        *
+    !* OPTIONAL:     Load: The load the hand is carrying      *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC OpenHand(\PERS loaddata Load)
+        Hand FALSE,\Load?Load;
+    BACKWARD
+    ERROR
+        RAISE ;
+    ENDPROC
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CloseHand                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Closes the hand                          *
+    !*                                                        *
+    !* OPTIONAL:     Load: The load the hand is carrying      *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC CloseHand(\PERS loaddata Load)
+        Hand TRUE,\Load?Load;
+    BACKWARD
+    ERROR
+        RAISE ;
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: Hand                                     *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Open/close hand:                         *
+    !*               1) Waits until robot is inpos.           *
+    !*               2) Call drivers to open or close hand.   *
+    !*               3) Set payload for task executing.       *
+    !*                  If Open is ordered, set load0.        *
+    !*                  If close ordered, set the right payload using
+    !*                  HandRight_payload for T_ROB_R and     *
+    !*                  HandLeft_payload for T_ROB_L.         *
+    !*               HandLeft_payload and HandRight_payload is*
+    !*               PERS variables declared in this module   *
+    !*               and is updated by the "Lets get started" *
+    !*               application.                             *
+    !*                                                        *
+    !* IN:           action: Open or close                    *
+    !*                                                        *
+    !* OPTIONAL:     load: The current load of hand           *
+    !*                                                        *
+    !* EXAMPLE:     Hand(bool action, \PERS loaddata Load);   *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    LOCAL PROC Hand(bool action,\PERS loaddata Load)
+
+        WaitRob\InPos;
+
+        IF action THEN
+            ! Close ordered
+            Hand_GripInward;
+        ELSE
+            ! Open ordered
+            Hand_GripOutward;
+            Hand_Stop;
+        ENDIF
+
+        IF Present(Load) THEN
+            GripLoad Load;
+        ELSE
+            IF action THEN
+                IF GetTaskName()="T_ROB_R" THEN
+                    GripLoad YuMi_App_SelLoadR;
+                ELSEIF GetTaskName()="T_ROB_L" THEN
+                    GripLoad YuMi_App_SelLoadL;
+                ELSE
+                    ErrWrite "Hand ERROR","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
+                    SystemStopAction\StopBlock;
+                ENDIF
+            ELSE
+                GripLoad load0;
+            ENDIF
+        ENDIF
+
+    ERROR
+        RAISE ;
+    ENDPROC
+
+ENDMODULE
