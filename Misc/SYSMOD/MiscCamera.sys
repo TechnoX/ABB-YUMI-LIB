@@ -22,45 +22,87 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
     
-    ! NOTE!!!! This is now splitted in two files, here and in MathCamera as well... 
-    !TASK PERS num Calibrated:=1;
+    
     
     !**********************************************************
     !*                                                        *
-    !* ROUTINE NAME: RequestImageAndGetResult                 *
+    !* ROUTINE NAME: CalcCameraDepth                          *
     !*                                                        *
     !**********************************************************
     !*                                                        *
-    !* DESCRIPTION:  Don't know ...                           *
+    !* DESCRIPTION:  This function calculates the camera depth*
+    !*               given a lenght and 2 camera measurements *
     !*                                                        *
-    !* IN:           CameraToUse: The cam to get result from  *
+    !* IN:           length: physical distance in mm          *
+    !*                       (measured with a ruler)          *
+    !*               camPos1: See camPos2                     *
+    !*               camPos2: camera measurements             *
+    !*                        corresponding to the lenght,    *
+    !*                        ie one measurement at each end  *
+    !*               Kinv:                                    *
     !*                                                        *
-    !* RETURN:       pos: The result                          *
+    !* RETURN:       num: the Z coordinate of the object in   *
+    !*                    camera work object                  *
     !*                                                        *
-    !* EFFECTS:      Calibrated: Sets the value to 3          *
+    !* NOTE:         This function will only work correctly if*
+    !*               the measured object is orthogonal to the *
+    !*               camera axis.                             *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
     !**********************************************************
-    FUNC pos RequestImageAndGetResult(VAR CameraDev CameraToUse)
-        VAR cameratarget tgt;
-        %"CamReqImage"%CameraToUse;
-        %"CamGetResult"%CameraToUse,tgt\MaxTime:=5;
-        WaitTime 2.0;
-        Calibrated:=3;
-        RETURN tgt.cframe.trans;
-    ERROR
-        IF ERRNO=ERR_CAM_MAXTIME THEN
-            TPWrite "Could not find the target";
-            RETURN [0,0,0];
-        ELSEIF ERRNO=ERR_CAM_COM_TIMEOUT THEN
-            WaitTime 2.0;
-            Calibrated:=3;
-            RETRY;
-        ENDIF
+    FUNC num CalcCameraDepth(num length,pos camPos1,pos camPos2,num Kinv{*,*})
+        !VAR num Ka;
+        VAR num dcx;
+        VAR num dcy;
+        VAR num hres{3,1};
+        dcx:=camPos2.x-camPos1.x;
+        dcy:=camPos2.y-camPos1.y;
+        MatrixMultiply Kinv,[[dcx],[dcy],[0]],hres;
+        !Ka:=Pow(Kinv{1,1},2)*Pow(dcx,2)+Pow(Kinv{1,2},2)*Pow(dcy,2)+Pow(Kinv{2,2},2)*Pow(dcy,2)+2*Kinv{1,2}*Kinv{1,1}*dcy*dcx;
+        !return sqrt(Pow(length,2)*(Ka))/(Ka);
+        RETURN length/sqrt(hres{1,1}*hres{1,1}+hres{2,1}*hres{2,1});
+        RETURN 1;
     ENDFUNC
-    
-    
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcObjFrame                             *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know                               *
+    !*                                                        *
+    !* IN:           trayPose:                                *
+    !*               camPos:                                  *
+    !*               Zoffset:                                 *
+    !*               Kinv:                                    *
+    !*                                                        *
+    !* RETURN:       pos:                                     *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC pose CalcObjFrame(pose trayPose,num camPos{*},num Zoffset,num Kinv{*,*})
+        VAR num T{4,4};
+        VAR num nP{3};
+        VAR num dP;
+        VAR num camZ;
+        VAR num pcam{3,1};
+        VAR pose retPose;
+        !Determine plane equation for tray pose
+        posetoxform trayPose,T;
+        nP:=[T{1,3},T{2,3},T{3,3}];
+        dP:=-(nP{1}*T{1,4}+nP{2}*T{2,4}+nP{3}*T{3,4});
+        !Solve for camZ from plane vision ray intersection
+        camZ:=-(dP-Zoffset)/(nP{1}*Kinv{1,1}*camPos{1}+nP{1}*Kinv{1,2}*camPos{2}+nP{1}*Kinv{1,3}+nP{2}*Kinv{2,2}*camPos{2}+nP{2}*Kinv{2,3}+nP{3});
+        MatrixMultiply Kinv,[[camPos{1}],[camPos{2}],[1]],pcam;
+        retPose:=PoseMult([[0,0,0],trayPose.rot],[[0,0,0],OrientZYX(camPos{3},0,0)]);
+        retPose.trans:=[pcam{1,1}*camZ,pcam{2,1}*camZ,camZ];
+        RETURN retPose;
+    ENDFUNC
+
     
     
     !**********************************************************
