@@ -1,0 +1,126 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE MiscCamera(SYSMODULE,NOVIEW)
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: RequestImageAndGetResult                 *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know ...                           *
+    !*                                                        *
+    !* IN:           CameraToUse: The cam to get result from  *
+    !*                                                        *
+    !* RETURN:       pos: The result                          *
+    !*                                                        *
+    !* EFFECTS:      Calibrated: Sets the value to 3          *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    FUNC pos RequestImageAndGetResult(VAR CameraDev CameraToUse)
+        VAR cameratarget tgt;
+        %"CamReqImage"%CameraToUse;
+        %"CamGetResult"%CameraToUse,tgt\MaxTime:=5;
+        WaitTime 2.0;
+        Calibrated:=3;
+        RETURN tgt.cframe.trans;
+    ERROR
+        IF ERRNO=ERR_CAM_MAXTIME THEN
+            TPWrite "Could not find the target";
+            RETURN [0,0,0];
+        ELSEIF ERRNO=ERR_CAM_COM_TIMEOUT THEN
+            WaitTime 2.0;
+            Calibrated:=3;
+            RETRY;
+        ENDIF
+    ENDFUNC
+    
+    
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: ReadVisionValues                         *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Reads all vision values for specified    *
+    !*               tool                                     *
+    !*                                                        *
+    !* IN:           sToolName: Don't know ...                *
+    !*                                                        *
+    !* INOUT:        CameraResult: Don't know ...             *
+    !*               nNumberFound: Don't know ...             *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    PROC ReadVisionValues(string sToolName,INOUT pos CameraResult{*},INOUT num nNumberFound)
+        VAR string sIndex;
+        VAR num nX;
+        VAR num nY;
+        VAR num nAngle;
+        VAR num nNoFound;
+        !VAR string sToolName:="Pattern_3";
+        CamGetParameter HandCameraR,sToolName+".Number_Found"\NumVar:=nX;
+        nNoFound:=nX;
+        nNumberFound:=0;
+        FOR i FROM 1 TO nNoFound DO
+            IF i=1 THEN
+                sIndex:="";
+            ELSE
+                sIndex:=NumToStr(i-1,0);
+            ENDIF
+            CamGetParameter HandCameraR,sToolName+".Fixture"+sIndex+".X"\NumVar:=nX;
+            CamGetParameter HandCameraR,sToolName+".Fixture"+sIndex+".Y"\NumVar:=nY;
+            CamGetParameter HandCameraR,sToolName+".Fixture"+sIndex+".Angle"\NumVar:=nAngle;
+            IF nX<>0 AND nY<>0 AND nAngle<>0 THEN
+                Incr nNumberFound;
+                CameraResult{nNumberFound}:=[nX,nY,nAngle];
+            ENDIF
+        ENDFOR
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: ReadVisionValues2                        *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Reads all vision values for specified    *
+    !*               tool                                     *
+    !*                                                        *
+    !* IN:           sToolName: Don't know ...                *
+    !*               nSceneId: Don't know ...                 *
+    !*                                                        *
+    !* INOUT:        CameraResult: Don't know ...             *
+    !*               nNumberFound: Don't know ...             *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    PROC ReadVisionValues2(string sToolName,num nSceneId,INOUT pos CameraResult{*},INOUT num nNumberFound)
+        VAR cameratarget camResult;
+        nNumberFound:=0;
+        WHILE TRUE DO
+            CamGetResult HandCameraR,camResult\SceneId:=nSceneId\MaxTime:=1;
+            IF camResult.cframe.trans<>[0,0,0] THEN
+                Incr nNumberFound;
+                CameraResult{nNumberFound}:=[camResult.cframe.trans.x,camResult.cframe.trans.y,EulerZYX(\Z,camResult.cframe.rot)];
+            ENDIF
+        ENDWHILE
+    ERROR
+        IF ERRNO=ERR_CAM_NO_MORE_DATA OR ERRNO=ERR_CAM_MAXTIME THEN
+            !No more results
+            RETURN ;
+        ENDIF
+    ENDPROC
+
+    
+ENDMODULE
