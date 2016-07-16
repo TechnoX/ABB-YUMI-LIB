@@ -17,13 +17,23 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     !* need to decide when to use MoveL, MoveJ etc.           *
     !*                                                        *
     !*                                                        *
-    !* DEPENDENCIES: MathPure                                 *
+    !* DEPENDENCIES: MathPure, MathPhysical                   *
     !*                                                        *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
 
+
+    VAR jointtarget jtLastPosition;
+    PERS bool bRestartMoveYActive;
+    PERS bool bRestartMoveYOrdered;
+    LOCAL VAR num nMoveYMode;
+    
+    VAR errnum ERR_RESTART_MOVEY:=-1;
+    VAR errnum YUMILIB_COLL_DETECTED:=-1;
+    
+    
     
     !**********************************************************
     !*                                                        *
@@ -360,4 +370,6 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     ENDTRAP
 
     
+    
+
 ENDMODULE
