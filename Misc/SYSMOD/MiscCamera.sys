@@ -21,9 +21,9 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
-    
-    
-    
+
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcCameraDepth                          *
@@ -103,8 +103,8 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
         RETURN retPose;
     ENDFUNC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: ReadVisionValues                         *
@@ -183,5 +183,5 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
         ENDIF
     ENDPROC
 
-    
+
 ENDMODULE

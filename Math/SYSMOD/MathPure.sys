@@ -22,10 +22,10 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
-    
-    
-    
-    
+
+
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: Min                                      *
@@ -98,7 +98,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN SqrtDnum(sum);
     ENDFUNC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: Max                                      *
@@ -242,8 +242,8 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN retpos;
     ENDFUNC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: DotProductDnum                           *
@@ -272,7 +272,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN sum;
     ENDFUNC
 
-    
+
 
     !**********************************************************
     !*                                                        *
@@ -502,8 +502,8 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDIF
         RETURN retpos;
     ENDFUNC
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: AxisAngletoQuat                          *
@@ -528,7 +528,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         s:=sin(angle/2);
         RETURN [cos(angle/2),nAxis.x*s,nAxis.y*s,nAxis.z*s];
     ENDFUNC
-    
+
 
     !**********************************************************
     !*                                                        *
@@ -624,7 +624,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     ENDFUNC
 
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: InterpolatePose                          *
@@ -717,9 +717,9 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN retPose;
     ENDFUNC
 
-    
-    
-    
+
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: MatrixMultiply                           *
@@ -750,7 +750,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDFOR
     ENDPROC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: MatrixTranspose                          *
@@ -774,8 +774,8 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDFOR
     ENDPROC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: MatrixTransposeDnum                      *
@@ -799,7 +799,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDFOR
     ENDPROC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: MatrixMultiply                           *
@@ -831,7 +831,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN ;
     ENDPROC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: invert2DMatrix                           *
@@ -901,8 +901,8 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN TRUE;
     ENDFUNC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: Modulo                                   *
@@ -1017,7 +1017,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDIF
     ENDFUNC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcLSQPlane                             *
@@ -1082,8 +1082,8 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN retPose;
     ENDFUNC
 
-        
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcOverTurn                             *

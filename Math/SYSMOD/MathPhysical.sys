@@ -24,14 +24,14 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
-    
+
     CONST num jointlimits{7,2}:=[[-168.5,168.5],[-143.5,43.5],[-123.5,80],[-290,290],[-88,138],[-229,229],[-168.5,168.5]];
 
     ! This doesn't mean anything??? Not very good variable names ... ;-)
     VAR errnum myerrno:=0;
     CONST errnum AsimovError:=1;
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcDistanceToStop                       *
@@ -116,8 +116,8 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
         ENDFOR
         RETURN sqrt(sqsum);
     ENDFUNC
-    
-    
+
+
 
     !**********************************************************
     !*                                                        *
@@ -249,7 +249,7 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
         RETURN singAreapoint;
     ENDFUNC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcSingAreapointNumJac                  *
@@ -363,9 +363,6 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
       numtodnum(ArmAngleErr)];
         RETURN TRUE;
     ENDFUNC
-    
-    
-    
 
 
     !**********************************************************
@@ -486,10 +483,10 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
         RETURN ppntnew;
     ENDFUNC
 
-    
-    
-    
-    
+
+
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: AlignPose                                *
@@ -522,7 +519,7 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
         RETURN PoseMult([p1.trans,[1,0,0,0]],PoseMult(mPose,[[0,0,0],p1.rot]));
     ENDFUNC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcMidPoint                             *
@@ -637,8 +634,8 @@ MODULE MathPhysical(SYSMODULE,NOVIEW)
         RETURN pRetTarget;
     ENDFUNC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: OptimizeArmAngle                         *

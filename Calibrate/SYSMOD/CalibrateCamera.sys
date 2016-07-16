@@ -21,14 +21,14 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
-    
+
     TASK PERS wobjdata calwobj:=[FALSE,TRUE,"",[[427.52,-170.005,400.103],[0.355326,-0.325694,-0.632327,-0.606489]],[[0,0,0],[1,0,0,0]]];
-    
+
     LOCAL CONST num calibcameraPoints:=15;
-    
+
     TASK PERS num Calibrated:=1;
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: PMatDecompQR                             *
@@ -409,7 +409,7 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         RETURN status;
     ENDFUNC
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalibWobjAndTool                         *
@@ -1337,10 +1337,10 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
             RETRY;
         ENDIF
     ENDPROC
-    
+
     ! NOTE!!!! This is now splitted in two files, here and in MathCamera as well... 
     !TASK PERS num Calibrated:=1;
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: RequestImageAndGetResult                 *
@@ -1375,8 +1375,8 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
             RETRY;
         ENDIF
     ENDFUNC
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: PoseRelTool                              *
@@ -1407,5 +1407,5 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         RETURN retPose;
     ENDFUNC
 
-    
+
 ENDMODULE
