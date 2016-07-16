@@ -33,6 +33,24 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     VAR errnum ERR_RESTART_MOVEY:=-1;
     VAR errnum YUMILIB_COLL_DETECTED:=-1;
 
+    
+    
+    ! TODO: Why not saving these inside a RECORD for right and left hand? So all settings are saved together.
+    ! And you just switch record entity for the current task
+	PERS zonedata YuMi_App_SelZoneR:= [FALSE,10,15,15,1.5,15,1.5];
+	PERS zonedata YuMi_App_SelZoneL:= [FALSE,10,15,15,1.5,15,1.5];
+
+	PERS speeddata YuMi_App_SelSpeedR:=[1500,500,5000,1000];
+	PERS speeddata YuMi_App_SelSpeedL:=[1500,500,5000,1000];
+
+    TASK PERS tooldata YuMi_App_move_tool_local := [ TRUE, [ [0, 0, 136], [1, 0, 0 ,0] ], [0.23, [8.2, 11.7, 52], [1, 0, 0, 0], 0.00021, 0.00024, 9E-05] ];
+    TASK PERS speeddata YuMi_App_move_speed_local :=[1500,100,5000,1000];
+    TASK PERS zonedata YuMi_App_move_zone_local :=[FALSE,10,15,15,1.5,15,1.5];
+
+    
+    PERS tasks YuMi_App_task_list{2} := [ ["T_ROB_L"], ["T_ROB_R"] ];
+	VAR syncident YuMi_App_sync1;
+	
 
 
     !**********************************************************
@@ -371,5 +389,300 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
 
 
 
+    
+    
+    
+    
+    
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: Move                                     *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Moves the robot to specific point. No    *
+    !*               need to specify MoveJ or MoveL, the      *
+    !*               function selects appropiate action       *
+    !*                                                        *
+    !* IN:           ToPoint: The destination point           *
+    !*                                                        *
+    !* OPTIONAL:     J or L: Force to use MoveJ or MoveL      *
+    !*               Speed: The movement speed                *
+    !*               Zone: The zone type at the corners       *
+    !*               Tool: The tool to be used                *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC Move(
+		\switch J | switch L,
+        robtarget ToPoint
+        \speeddata Speed
+        \zonedata Zone
+		\tooldata Tool)
+        IF Present(J) THEN
+            Move_internal \J, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool ;
+        ELSEIF Present(L) THEN
+            Move_internal \L, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool ;
+		ELSE
+			Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool ;
+        ENDIF        
+        
+    BACKWARD
+        !TPWrite "Move BACKWARD";
+        Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool;
+
+
+        ERROR
+            IF ERRNO = ERR_PATH_STOP OR ERRNO = ERR_COLL_STOP THEN
+               ! Asynchronous error handling. Raise the error to the user without ending instruction
+                RaiseToUser \Continue;
+            ELSE
+               ! Instruction detects the error, instruction is ended
+               RAISE;
+            ENDIF
+        
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: MoveSync                                 *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Same as Move above, but syncronized      *
+    !*               between left and right arm??             *
+    !*                                                        *
+    !* IN:           ToPoint: The destination point           *
+    !*                                                        *
+    !* OPTIONAL:     J or L: Force to use MoveJ or MoveL      *
+    !*               Speed: The movement speed                *
+    !*               Zone: The zone type at the corners       *
+    !*               Tool: The tool to be used                *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC MoveSync(
+		\switch J | switch L,
+        robtarget ToPoint
+        \speeddata Speed
+        \zonedata Zone
+		\tooldata Tool)
+        
+		IF Present(J) THEN
+            Move_internal \J, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool \Sync;
+        ELSEIF Present(L) THEN
+            Move_internal \L, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool \Sync;
+		ELSE
+			Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool \Sync;
+        ENDIF   
+
+    BACKWARD
+        ! TBD - 
+        TPWrite "MoveSync BACKWARD, WaitSyncTask not possible";
+        Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool;
+
+        ERROR
+            IF ERRNO = ERR_PATH_STOP OR ERRNO = ERR_COLL_STOP THEN
+               ! Asynchronous error handling. Raise the error to the user without ending instruction
+                RaiseToUser \Continue;
+            ELSE
+               ! Instruction detects the error, instruction is ended
+               RAISE;
+            ENDIF
+
+    ENDPROC
+
+    !-----------------------------------------------------------------------
+    ! Move_internal - 
+    !                 Syntax - PROC Move(robtarget ToPoint);
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: Move_internal                            *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Moves to a robtarget with hardcoded      *
+    !*               speeddata and zonedata.                  *
+    !*               Depending on the task executing, it uses *
+    !*               Hand1 or Hand2 as tooldata.              *
+    !*                                                        *
+    !* IN:           ToPoint: The destination point           *
+    !*                                                        *
+    !* OPTIONAL:     J or L: Force to use MoveJ or MoveL      *
+    !*               Speed: The movement speed                *
+    !*               Zone: The zone type at the corners       *
+    !*               Tool: The tool to be used                *
+    !*               Sync: Whether it should syncronize motion*
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    LOCAL PROC Move_internal (
+		\switch J | switch L,
+		robtarget ToPoint
+        \speeddata Speed
+        \zonedata Zone
+		\tooldata Tool
+        \switch Sync)
+        
+        VAR robtarget move_robt_local;
+        VAR robtarget pCurrentPosition;
+		VAR Pose pDiff;
+		VAR num linDist;
+		VAR num angDist;
+
+        move_robt_local:=ToPoint;
+        ! Set Zone to use
+        IF Present(Speed) THEN
+            YuMi_App_move_speed_local:=Speed;
+        ELSE
+            GetSpeedData YuMi_App_move_speed_local;
+        ENDIF
+        ! Limit the reorientation velocity of the TCP expressed in degrees/s. 
+        YuMi_App_move_speed_local.v_ori:=100;
+        
+        ! Set Zone to use
+        IF Present(Sync) THEN
+            YuMi_App_move_zone_local:=Fine;
+        ELSE
+            IF Present(Zone) THEN
+                YuMi_App_move_zone_local:=Zone;
+            ELSE
+                GetZoneData YuMi_App_move_zone_local;
+            ENDIF
+        ENDIF
+        IF Present(Tool) THEN
+            YuMi_App_move_tool_local := Tool;
+        ELSE
+            GetToolData YuMi_App_move_tool_local;
+        ENDIF
+		SingArea \Wrist;
+        !IF GetTaskName() = "T_ROB_R" THEN
+		!	MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+			!MoveL CalcRobT(move_robt_local,YuMi_App_move_tool_local), YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+            !MoveAbsJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local, YuMi_App_move_tool_local;
+        !ELSEIF GetTaskName() = "T_ROB_L" THEN
+		!	MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+			!MoveL CalcRobT(move_robt_local,YuMi_App_move_tool_local), YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+            !MoveAbsJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local, YuMi_App_move_tool_local;
+        !ELSE
+        !    ErrWrite "Move ERROR", "Wrong taskname on task." \RL2:="Taskname: "+GetTaskName() \RL3:="Change taskname in configuration.";
+        !    SystemStopAction \StopBlock;
+        !ENDIF
+		IF Present(L) THEN
+            MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        ELSEIF Present(J) THEN
+			MoveJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+		ELSE
+			pCurrentPosition:=CRobT(\Tool:=YuMi_App_move_tool_local);        
+			pDiff:=PoseMult(PoseInv([pCurrentPosition.trans,pCurrentPosition.rot]),[move_robt_local.trans,move_robt_local.rot]);
+			linDist:=VectMagn(pDiff.trans);
+			angDist:=2*acos(abs(pDiff.rot.q1));
+			IF linDist>150 OR angDist > 20 THEN
+				MoveJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+			ELSE
+				MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+			ENDIF
+		ENDIF
+         IF Present(Sync) THEN
+            WaitSyncTask YuMi_App_sync1, YuMi_App_task_list;
+        ENDIF
+        
+        ERROR
+            IF ERRNO = ERR_PATH_STOP OR ERRNO = ERR_COLL_STOP THEN
+               ! Asynchronous error handling. Raise the error to the user without ending instruction
+                RaiseToUser \Continue;
+            ELSE
+               ! Instruction detects the error, instruction is ended
+               RAISE;
+            ENDIF
+   
+    ENDPROC
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: GetSpeedData                             *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Sets the speed according to the task     *
+    !*               which is currently executing this        *
+    !*               routine. Either left or right arm.       *
+    !*                                                        *
+    !* INOUT:        loc: The speed that should be modified   *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+	LOCAL PROC GetSpeedData(PERS speeddata loc)
+        IF GetTaskName()="T_ROB_R" THEN
+            loc := YuMi_App_SelSpeedR;
+        ELSEIF GetTaskName()="T_ROB_L" THEN
+            loc := YuMi_App_SelSpeedL;
+        ELSE
+            ErrWrite "GetSpeedData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
+            SystemStopAction\StopBlock;
+        ENDIF
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: GetZoneData                              *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Sets the zone according to the task      *
+    !*               which is currently executing this        *
+    !*               routine. Either left or right arm.       *
+    !*                                                        *
+    !* INOUT:        loc: The zone that should be modified    *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    LOCAL PROC GetZoneData(PERS zonedata loc)
+        IF GetTaskName()="T_ROB_R" THEN
+            loc := YuMi_App_SelZoneR;
+        ELSEIF GetTaskName()="T_ROB_L" THEN
+            loc := YuMi_App_SelZoneL;
+        ELSE
+            ErrWrite "GetZoneData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
+            SystemStopAction\StopBlock;
+        ENDIF
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: GetToolData                              *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Sets the tool according to the task      *
+    !*               which is currently executing this        *
+    !*               routine. Either left or right arm.       *
+    !*                                                        *
+    !* INOUT:        loc: The tool that should be modified    *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    LOCAL PROC GetToolData(PERS tooldata loc)
+		VAR tooldata loc1;
+        IF GetTaskName()="T_ROB_R" THEN
+			GetDataVal "GripperR",loc1;
+            loc := loc1;
+        ELSEIF GetTaskName()="T_ROB_L" THEN
+			GetDataVal "GripperL",loc1;
+            loc := loc1;
+        ELSE
+            ErrWrite "GetToolData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
+            SystemStopAction\StopBlock;
+        ENDIF
+    ENDPROC
 
 ENDMODULE
