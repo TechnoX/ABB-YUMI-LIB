@@ -3,7 +3,7 @@
     LANGUAGE:ENGLISH
 %%%
 
-MODULE Math(SYSMODULE,NOVIEW)
+MODULE MathPure(SYSMODULE,NOVIEW)
 
     
     !**********************************************************
