@@ -1,0 +1,343 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE MiscMove(SYSMODULE,NOVIEW)
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: MoveY                                    *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Makes a compact and fast movement to a   *
+    !*               robtarget.                               *
+    !*               ArmAngle is optimized, if needed, for    *
+    !*               ToPoint                                  *
+    !*                                                        *
+    !* IN:           A lot of parameters...                   *
+    !*                                                        *
+    !* OPTIONAL:     MidOffs: use to offset midpoint          *
+    !*               J: Use for large Joint motion            *
+    !*               L: Use for short Linear motion,          *
+    !*                  ConfL\Off will be used                *
+    !*               SyncProc: use to perform a MoveLSync with*
+    !*                         Proc Sync                      *
+    !*                                                        *
+    !* NOTE:         Conf is set to 0011                      *
+    !*               Mid point is inserted if needed for      *
+    !*               compact motion                           *
+    !*               Axis 4 and 6 are allowed to overturn     *
+    !*               until 20 degrees to lim                  *
+    !*                                                        *
+    !* EXAMPLE:      Depending on the task executing, it uses *
+    !*               Hand1 or Hand2 as tooldata.              *
+    !*               Syntax - PROC Move(robtarget ToPoint);   *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    PROC MoveY(\switch J|switch L,
+        \num DesiredTorque
+        \VAR bool CollisionDetected,
+        robtarget pToPoint,
+        speeddata speed,
+        zonedata zone,
+		PERS tooldata tool
+        \PERS wobjdata WObj
+        \jointtarget LastPosition
+        \pos MidOffs
+        \string SyncProc)
+        BookErrNo ERR_RESTART_MOVEY;
+        bRestartMoveYActive:=TRUE;
+        bRestartMoveYOrdered:=FALSE;
+
+        IF Present(J) THEN
+            nMoveYMode:=2;
+            MoveY_int\J,\DesiredTorque?DesiredTorque,pToPoint,speed,zone,tool\WObj?WObj\LastPosition?LastPosition\MidOffs?MidOffs\SyncProc?SyncProc;
+        ELSEIF Present(L) THEN
+            nMoveYMode:=3;
+            MoveY_int\L,\DesiredTorque?DesiredTorque\CollisionDetected?CollisionDetected,pToPoint,speed,zone,tool\WObj?WObj\LastPosition?LastPosition\MidOffs?MidOffs\SyncProc?SyncProc;
+        ELSE
+            nMoveYMode:=0;
+            MoveY_int\DesiredTorque?DesiredTorque\CollisionDetected?CollisionDetected,pToPoint,speed,zone,tool\WObj?WObj\LastPosition?LastPosition\MidOffs?MidOffs\SyncProc?SyncProc;
+        ENDIF
+        bRestartMoveYActive:=FALSE;
+        RETURN ;
+    ERROR (ERR_RESTART_MOVEY)
+        IF ERRNO=ERR_RESTART_MOVEY THEN
+            jtLastPosition:=[[0,0,0,0,0,0],[0,0,0,0,0,0]];
+            IF nMoveYMode=0 THEN
+                ClearPath;
+                nMoveYMode:=1;
+                bRestartMoveYActive:=FALSE;
+                RETRY;
+            ENDIF
+        ENDIF
+    UNDO
+        bRestartMoveYActive:=FALSE;
+        jtLastPosition:=[[0,0,0,0,0,0],[0,0,0,0,0,0]];
+    ENDPROC
+
+    
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: MoveY_int                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  <what the procedure does (not how)>      *
+    !*                                                        *
+    !* IN:           \L OR \DesiredToruqe ->                  *
+    !*               MoveL SingArea\Off,                      *
+    !*               Use full range of Ax 4 & 6,              *
+    !*               no optimization/no midpoint              *
+    !*               \DesiredToruqe -> ContactL               *
+    !*               \J  ->  MoveJ no optimization/ no midpoint
+    !*                                                        *
+    !* OPTIONAL:     <parameter name and description>         *
+    !*                                                        *
+    !* ASSUMPTIONS:   nMoveYMode=0   ->                       *
+    !*                Default, MoveL SingArea\Wrist,          *
+    !*                optmize target armangle and path_midpoint
+    !*                nMoveYMode:=1  ->                       *
+    !*                MoveJ optmize target armangle and path_midpoint
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    PROC MoveY_int(\switch J|switch L,
+        \num DesiredTorque
+        \VAR bool CollisionDetected,
+        robtarget pToPoint,
+        speeddata speed,
+        zonedata zone,
+		PERS tooldata tool
+        \PERS wobjdata WObj
+        \jointtarget LastPosition
+        \pos MidOffs
+        \string SyncProc)
+
+        VAR num nAx4Dist;
+        VAR num nAx4DistToStop;
+        VAR num nAx5Dist;
+        VAR num nAx6Dist;
+        VAR num nAx1Dist;
+        VAR num nAx7Dist;
+        VAR num nAx6DistToStop;
+        VAR num nMaxRollDist;
+        VAR jointtarget jt1;
+        VAR jointtarget jt_mid;
+        VAR jointtarget jt2;
+        VAR num nAx4Mid;
+        VAR num nAx5Mid;
+        VAR num nAx6Mid;
+        VAR robtarget pMid;
+        VAR num nMid;
+        VAR num nMechDist:=10;
+        VAR num nMechDistRoll:=20;
+        VAR num nDist;
+        VAR robtarget pToPoint_local;
+        VAR robtarget p1;
+        VAR robtarget p2;
+        VAR num ArmAngleDiff;
+        !VAR num nLineDist;
+        VAR bool bSingAreaActive;
+        VAR robtarget pFromPoint;
+        VAR num maxAx5Dist;
+        VAR Pose pDiff;
+        VAR num linDist;
+        VAR num angDist;
+        VAR bool bLinearMovement;
+
+        bSingAreaActive:=C_MOTSET.sing.wrist;
+        IF Present(LastPosition) THEN
+            jtLastPosition:=LastPosition;
+        ELSEIF jtLastPosition.robax=[0,0,0,0,0,0] THEN
+            jtLastPosition:=CJointT();
+        ENDIF
+        pToPoint.robconf:=[0,0,0,11];
+        jt1:=jtLastPosition;
+        pFromPoint:=CalcRobT(jt1,Tool\WObj?WObj);
+        jt2:=CalcJointT(pToPoint,Tool\WObj?WObj\ErrorNumber:=myerrno);
+        IF Present(J) THEN
+            pToPoint_local:=pToPoint;
+            GOTO MoveTo_ToPoPoint;
+        ENDIF
+        pDiff:=PoseMult(PoseInv([pFromPoint.trans,pFromPoint.rot]),[pToPoint.trans,pToPoint.rot]);
+        linDist:=VectMagn(pDiff.trans);
+        angDist:=2*acos(abs(pDiff.rot.q1));
+        IF angDist<45 OR Present(L) THEN
+            bLinearMovement:=TRUE;
+        ELSE
+            bLinearMovement:=FALSE;
+        ENDIF
+        IF bLinearMovement=FALSE AND CalcDistancetoStop(jt2)<nMechDist THEN
+            pToPoint_local:=OptimizeArmAngle(pToPoint,Tool\WObj?WObj\jointSol:=jt2);
+        ENDIF
+        !For L motions, allow use of full motion range on roll axes
+        IF bLinearMovement THEN
+            nDist:=0;
+        ELSE
+            nDist:=nMechDistRoll;
+        ENDIF
+
+        nAx1Dist:=jt2.robax.rax_1-jt1.robax.rax_1;
+        nAx7Dist:=jt2.extax.eax_a-jt1.extax.eax_a;
+        nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+        nAx5Dist:=jt2.robax.rax_5-jt1.robax.rax_5;
+        nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+        !Decide turn for axis 4 & 6
+        IF Abs(nAx4Dist)>180 THEN
+            nAx4DistToStop:=(jointlimits{4,2}-jointlimits{4,1})/2-abs(CalcOverTurn(jt2.robax.rax_4)-(jointlimits{4,2}+jointlimits{4,1})/2);
+            IF nAx4DistToStop>nDist THEN
+                jt2.robax.rax_4:=CalcOverTurn(jt2.robax.rax_4);
+                nAx4Dist:=jt2.robax.rax_4-jt1.robax.rax_4;
+            ENDIF
+        ENDIF
+        IF Abs(nAx6Dist)>180 THEN
+            nAx6DistToStop:=(jointlimits{6,2}-jointlimits{6,1})/2-abs(CalcOverTurn(jt2.robax.rax_6)-(jointlimits{6,2}+jointlimits{6,1})/2);
+            IF nAx6DistToStop>nDist THEN
+                jt2.robax.rax_6:=CalcOverTurn(jt2.robax.rax_6);
+                nAx6Dist:=jt2.robax.rax_6-jt1.robax.rax_6;
+            ENDIF
+        ENDIF
+        pToPoint_local:=CalcRobT(jt2,tool\WObj?Wobj);
+        IF bLinearMovement GOTO MoveTo_ToPoPoint;
+
+        !Check if shoulder midpoint is needed
+        maxAx5Dist:=Max(jt1.robax.rax_5,jt2.robax.rax_5);
+        IF maxAx5Dist<(Abs(nAx4Dist)/2) THEN
+            nAx5Mid:=1;
+        ELSE
+            nAx5Mid:=maxAx5Dist-(Abs(nAx4Dist)/2);
+            !nAx5Mid:=1;
+        ENDIF
+        IF Abs(nAx1Dist)>180 OR Abs(nAx7Dist)>180 THEN
+            jt_mid.robax.rax_1:=0.5*(jt1.robax.rax_1+jt2.robax.rax_1);
+            jt_mid.robax.rax_2:=-1;
+            !jt_mid.robax.rax_3:=0.5*(jt1.robax.rax_3+jt2.robax.rax_3);
+            jt_mid.robax.rax_3:=60;
+            jt_mid.robax.rax_4:=0.5*(jt1.robax.rax_4+jt2.robax.rax_4);
+            jt_mid.robax.rax_5:=0.5*(jt1.robax.rax_5+jt2.robax.rax_5);
+            jt_mid.robax.rax_6:=0.5*(jt1.robax.rax_6+jt2.robax.rax_6);
+            jt_mid.extax.eax_a:=0.5*(jt1.extax.eax_a+jt2.extax.eax_a);
+            pMid:=CalcRobT(jt_mid,tool);
+            !Workaround due to unstable kinematic model in 6.03
+            nMoveYMode:=1;
+
+            !Check if wrist midpoint is needed
+            !ELSEIF Abs(nAx4Dist)-Abs(nAx5Dist)>90 THEN
+            !Always insert wrist midpoint
+        ELSE
+            nMid:=0.5;
+            nAx4Mid:=nMid*(jt2.robax.rax_4-jt1.robax.rax_4)+jt1.robax.rax_4;
+            nAx6Mid:=nMid*(jt2.robax.rax_6-jt1.robax.rax_6)+jt1.robax.rax_6;
+            pMid.trans:=nMid*(pToPoint.trans-pFromPoint.trans)+pFromPoint.trans;
+            ArmAngleDiff:=pToPoint.extax.eax_a-pFromPoint.extax.eax_a;
+            IF abs(ArmAngleDiff)>180 THEN
+                ArmAngleDiff:=Modulo(pToPoint.extax.eax_a,360)-Modulo(pFromPoint.extax.eax_a,360);
+            ENDIF
+            pMid.extax.eax_a:=Modulo(nMid*ArmAngleDiff+pFromPoint.extax.eax_a+180,360)-180;
+            pMid.robconf:=pFromPoint.robconf;
+            pMid:=CalcSingAreaPoint(pMid,jt1,tool,nAx4Mid,nAx5Mid,nAx6Mid\WObj?Wobj);
+
+        ENDIF
+
+        SingArea\Wrist;
+        IF pMid.rot<>[0,0,0,0] THEN
+            IF nMoveYMode=0 THEN
+                MoveL\Conc,pMid,speed,z100,tool\WObj?WObj;
+            ELSE
+                MoveJ\Conc,pMid,speed,z100,tool\WObj?WObj;
+            ENDIF
+        ENDIF
+        MoveTo_ToPoPoint:
+        IF nMoveYMode=1 OR Present(J) THEN
+            IF Present(SyncProc) THEN
+                MoveJSync pToPoint_local,speed,zone,tool\WObj?Wobj,SyncProc;
+            ELSE
+                MoveJ pToPoint_local,speed,zone,tool\WObj?Wobj;
+            ENDIF
+        ELSE
+            IF Present(L) THEN
+                SingArea\Off;
+            ELSE
+                SingArea\Wrist;
+            ENDIF
+            IF Present(DesiredTorque) THEN
+                IF Present(CollisionDetected) CollisionDetected:=TRUE;
+                ContactL\DesiredTorque:=DesiredTorque,pToPoint_local,speed,tool,\WObj?Wobj;
+                IF Present(SyncProc)%SyncProc %;
+            ELSEIF Present(SyncProc) THEN
+                MoveLSync pToPoint_local,speed,zone,tool\WObj?Wobj,SyncProc;
+            ELSE
+                IF zone=fine THEN
+                    MoveL pToPoint_local,speed,zone,tool\WObj?Wobj;
+                ELSE
+                    MoveL\Conc,pToPoint_local,speed,zone,tool\WObj?Wobj;
+                ENDIF
+            ENDIF
+        ENDIF
+        jtLastPosition:=jt2;
+        IF bSingAreaActive=FALSE Singarea\Off;
+        RETURN ;
+        MoveJ pFromPoint,speed,zone,tool\WObj?Wobj;
+        MoveL pFromPoint,speed,zone,tool\WObj?Wobj;
+    ERROR
+        IF ERRNO=ERR_CONTACTL THEN
+            SkipWarn;
+            IF Present(CollisionDetected) CollisionDetected:=FALSE;
+            TRYNEXT;
+        ENDIF
+    UNDO
+        IF bSingAreaActive=FALSE Singarea\Off;
+    ENDPROC
+
+    
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: Restart_Event                            *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know ...                           *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    PROC Restart_Event()
+        IF ERR_RESTART_MOVEY>-1 AND bRestartMoveYOrdered AND nMoveYMode=0 THEN
+            bRestartMoveYOrdered:=FALSE;
+            RAISE ERR_RESTART_MOVEY;
+        ENDIF
+        jtLastPosition:=[[0,0,0,0,0,0],[0,0,0,0,0,0]];
+    ERROR
+        RAISE ;
+    ENDPROC
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CollDetectedTrap                         *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know ...                           *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-15   1.0        Ivan Lundberg        created   *
+    !**********************************************************
+    TRAP CollDetectedTrap
+        RAISE YUMILIB_COLL_DETECTED;
+    ERROR
+        RAISE ;
+    ENDTRAP
+
+    
+ENDMODULE
