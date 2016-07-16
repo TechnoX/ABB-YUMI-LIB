@@ -16,7 +16,7 @@ MODULE YuMi_App_Vision_Common(SYSMODULE,NOVIEW)
     TASK PERS num HandCamera_Kinv{3,3}:=[[0.000603527,-1.21629E-06,-0.403364],[0,0.000604937,-0.296785],[0,0,1]];
     TASK PERS num HandCamera_K{3,3}:=[[1656.93,3.33143,669.334],[0,1653.06,490.605],[0,0,1]];
     TASK PERS tooldata tHandCamera:=[TRUE,[[-6.60187,25.9996,36.7599],[0.497457,-0.508011,-0.501783,-0.49262]],[0.23,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,9E-05]];
-    
+
     !TASK PERS num HandCamera_Kinv{3,3}:=[[0.000606484,-1.58454E-06,-0.396064],[0,0.000605587,-0.291102],[0,0,1]];
     !TASK PERS num HandCamera_K{3,3}:=[[1648.85,4.31427,654.306],[0,1651.29,480.694],[0,0,1]];
     !TASK PERS tooldata tHandCamera:=[TRUE,[[-7.46452,26.5632,34.4859],[0.503125,-0.494913,-0.510782,-0.490946]],[0.23,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,9E-05]];
@@ -119,6 +119,7 @@ MODULE YuMi_App_Vision_Common(SYSMODULE,NOVIEW)
             ENDIF
         ENDIF
     ENDPROC
+
     FUNC wobjdata CalcVisionWobjHandCamera(robtarget pTakePicture,pos CameraValue,\pose psImagePlane)
         VAR pose tablePose;
         VAR num nCameraFrameAngle;
