@@ -9,7 +9,7 @@ MODULE InteractionBackground(SYSMODULE)
     !*                                                        *
     !* This module is intented to be ran as a background task *
     !* It will supervise the joints and fire a trap if        *
-	!* someone is tapping the robots joints.                  *
+    !* someone is tapping the robots joints.                  *
     !*                                                        *
     !*                                                        *
     !* DEPENDENCIES: Internal                                 *
@@ -18,7 +18,7 @@ MODULE InteractionBackground(SYSMODULE)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        Ivan Lundberg        created   *
     !**********************************************************
-    
+
     CONST string sMechUnitName{2}:=["ROB_R","ROB_L"];
     CONST num nNameLength{2}:=[5,5];
     VAR num nColl_Torque{2};
@@ -62,17 +62,17 @@ MODULE InteractionBackground(SYSMODULE)
     PERS num nMaxLoggedSpeed{2};
     PERS num nMaxLoggedCollTorque{2};
     PERS num nMaxLoggedTorque{2};
-    
+
     ! Bra för att läsa av kollisioner
-    PERS num nColl_TorqueLimit{2}; 
+    PERS num nColl_TorqueLimit{2};
     PERS num nSpeedLimit{2};
     PERS bool bYuMiLibStopActive{2};
     PERS num nTorqueLimit{2};
 
     !One axis per arm can be setup to monitor abs value of torque
-    PERS num nTorqueLimitActiveAxis{2};    
-    
-    
+    PERS num nTorqueLimitActiveAxis{2};
+
+
     PROC main()
         VAR string IOName;
         VAR bool bStopFirstTime;
@@ -93,7 +93,7 @@ MODULE InteractionBackground(SYSMODULE)
 
         !CONNECT err_interrupt WITH trap_err;
         !IError MOTION_ERR,TYPE_ERR,err_interrupt;
-        
+
         TPWrite "Start YuMiLibBG";
         !WaitTime 1;
         WHILE TRUE DO
@@ -173,8 +173,8 @@ MODULE InteractionBackground(SYSMODULE)
 
 
 
-    
-     TRAP trap_err
+
+    TRAP trap_err
         GetTrapData err_data;
         ReadErrData err_data,err_domain,err_number,err_type;
         ! St domain no 1 ... 11
@@ -199,12 +199,12 @@ MODULE InteractionBackground(SYSMODULE)
             !turn of both grippers
             !Put motors back on
             !
-            SetGO hand_CmdGripper_R, 10;
-            SetGO hand_CmdGripper_L, 10;
+            SetGO hand_CmdGripper_R,10;
+            SetGO hand_CmdGripper_L,10;
             Waituntil hand_SysState_R=0;
             Waituntil hand_SysState_L=0;
-            SetGO hand_CmdGripper_R, 0;
-            SetGO hand_CmdGripper_L, 0;
+            SetGO hand_CmdGripper_R,0;
+            SetGO hand_CmdGripper_L,0;
             PulseDO\PLength:=1,VP_MOTOPB;
             WaitTime 1;
             ActivateLeadThrough "ROB_R";
