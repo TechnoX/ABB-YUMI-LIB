@@ -22,9 +22,7 @@ MODULE InteractionBackground(SYSMODULE)
     CONST string sMechUnitName{2}:=["ROB_R","ROB_L"];
     CONST num nNameLength{2}:=[5,5];
     VAR num nColl_Torque{2};
-    VAR num nSpeed{2,7};
     VAR num nMaxSpeed{2};
-    VAR num nTorque{2,7};
 
     VAR signaldo doTorqueSup{2};
     VAR signaldo doSpeedSup{2};
