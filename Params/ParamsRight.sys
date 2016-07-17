@@ -35,7 +35,7 @@ MODULE ParamsRight(SYSMODULE,NOVIEW)
     TASK PERS speeddata SelSpeed:=[1500,500,5000,1000];
     TASK PERS robtarget pShowABBLogo:=[[400,-200,400],[0,0,0,-1],[1,0,0,11],[-110,9E+09,9E+09,9E+09,9E+09,9E+09]];
     TASK PERS loaddata SelLoad:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
-    TASK PERS string config_io_string:="flange_24V_ROB_R";
+    CONST string config_io_string:="flange_24V_ROB_R";
     TASK PERS string VisionSystemName:="HandCameraR";
 
     !Define these points so that they fit within the field of view of the camera. 
