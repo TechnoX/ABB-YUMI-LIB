@@ -84,7 +84,7 @@ MODULE PickVision(SYSMODULE,NOVIEW)
         WObj_VisionTest.uframe:=[pTakePicture.trans,pTakePicture.rot];
         WObj_VisionTest.oframe:=CalcObjFrame(PoseMult(PoseInv(WObj_VisionTest.uframe),tablePose),[CameraValue{1},CameraValue{2},CameraValue{3}],-Yumi_App_ZOffset,HandCamera_Kinv);
         !tHandCamera.tframe:=PoseMult(robotTCP.tframe,WObj_VisionTest.oframe);
-        !mRobTarget:=FindOptimalConfiguration(pPick,GripperL\WObj:=WObj_VisionTest\Axis5Positive);
+        !mRobTarget:=FindOptimalConfiguration(pPick,CurrGripper\WObj:=WObj_VisionTest\Axis5Positive);
         mRobTarget:=pPick;
         mRobTarget.robconf:=[0,0,0,11];
         !Note that the offs is relative to the Camera frame
@@ -109,21 +109,19 @@ MODULE PickVision(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
     PROC TrainVisionPick()
-        !VAR robtarget pTakePicture:=[[362.37,-97.70,370.14],[2.49306E-05,-0.699698,-0.714439,2.15999E-06],[0,-1,-2,11],[-150.4,9E+09,9E+09,9E+09,9E+09,9E+09]];
+        VAR robtarget pTakePicture:=[[362.37,-97.70,370.14],[2.49306E-05,-0.699698,-0.714439,2.15999E-06],[0,-1,-2,11],[-150.4,9E+09,9E+09,9E+09,9E+09,9E+09]];
         !CONST robtarget pTakePicture2:=[[400.37,-50.70,480.14],[2.49306E-05,-0.699698,-0.714439,2.15999E-06],[0,-1,-2,11],[-150.4,9E+09,9E+09,9E+09,9E+09,9E+09]];
         VAR num CameraValue{3};
-        VAR cameratarget mCamTarget;
         VAR robtarget mRobTarget;
         VAR pose tablePose;
         VAR string currentjob;
         VAR cameradev camera;
 
-        HandInit;
-        !SingArea\Wrist;
-        pTakePicture:=CRobT(\Tool:=tHandCamera\WObj:=wobj0);
-        TakePictureInt;
+        SingArea\Wrist;
 
         !MoveL pTakePicture,v50,fine,tHandCamera;
+        pTakePicture:=CRobT(\Tool:=tHandCamera\WObj:=wobj0);
+        Hand_GripOutward;
         !tHandCamera.tload:=HandRight.tload;
         !MoveL pTakePicture,v200,fine,tHandCamera;
 
@@ -140,12 +138,10 @@ MODULE PickVision(SYSMODULE,NOVIEW)
 
 
         !Load job that locates part
-
+        InitCamera camera,currentjob;
         !InitCamera HandCameraR,"Part_A.job";
 
-        CamReqImage camera;
-        CamGetResult camera,mCamTarget;
-        CameraValue:=[mCamTarget.cframe.trans.x,mCamTarget.cframe.trans.y,0];
+        TakePicture camera,CameraValue;
         TPWrite "CameraValue"\Pos:=[CameraValue{1},CameraValue{2},CameraValue{3}];
         tablePose.trans:=Yumi_App_Table_Pose.trans;
         tablePose.rot:=OrientZYX(180,0,180);
