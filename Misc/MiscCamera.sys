@@ -22,6 +22,9 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
 
+    TASK PERS num VisionStatus:=1;
+    TASK PERS num HandCamera_Kinv{3,3}:=[[0.000603527,-1.21629E-06,-0.403364],[0,0.000604937,-0.296785],[0,0,1]];
+    TASK PERS num Yumi_App_ZOffset:=11.7;
 
 
     !**********************************************************
@@ -184,4 +187,183 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     ENDPROC
 
 
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: InitCamera                               *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Load camera job that locates the gripper *
+    !*               marker                                   *
+    !*                                                        *
+    !* IN:           camera: The camera to load job to        *
+    !*               job: The job to load                     *
+    !*                                                        *
+    !* OPTIONAL:     ReloadJob: Force to load even if job     *
+    !*                          already exists on camera      *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC InitCamera(VAR cameradev camera,string job\switch ReloadJob)
+        !Load camera job that locates the gripper marker
+        CamSetProgramMode camera;
+        WaitTime 1;
+
+        IF CamGetLoadedJob(camera)<>job OR Present(ReloadJob) THEN
+            CamLoadJob camera,job;
+        ENDIF
+
+        CamSetRunMode camera;
+        WaitTime 1;
+        !Flaw in RobotWare WI111267
+
+    ERROR
+        IF ERRNO=ERR_CAM_COM_TIMEOUT THEN
+            WaitTime 1.0;
+            RETRY;
+        ENDIF
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: TakePicture                              *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Requests an image, finds the position    *
+    !*               and stores X, Y and angle in result.     *
+    !*                                                        *
+    !* IN:           camera: Camera device to use             *
+    !*                                                        *
+    !* INOUT:        num{*}: The result from the camera       *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC TakePicture(VAR cameradev camera,VAR num result{*})
+        VAR cameratarget cameraResult;
+
+        CamReqImage camera;
+        CamGetResult camera,cameraResult\MaxTime:=5;
+
+        result{1}:=cameraResult.cframe.trans.x;
+        result{2}:=cameraResult.cframe.trans.y;
+        !result{3}:=CameraResult.cframe.trans.z;
+        result{3}:=EulerZYX(\Z,cameraResult.cframe.rot);
+
+        WaitTime 2.0;
+        VisionStatus:=3;
+
+    ERROR
+        IF ERRNO=ERR_CAM_MAXTIME THEN
+            TPWrite "Could not find the target";
+            WaitTime 2.0;
+            VisionStatus:=2;
+            Stop;
+        ENDIF
+    ENDPROC
+
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: RestoreCtrlToCamera                      *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Don't know ...                           *
+    !*                                                        *
+    !* IN:           cam: The camera device to use            *
+    !*               replaceecistingfiles: Var name explains  *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC RestoreCtrlToCamera(var cameradev cam,bool replaceexistingfiles)
+        VAR string ctrldirname:="HOME:/IV/";
+        VAR dir ctrldirectory;
+        VAR string camdirname;
+        VAR string tempfilename;
+        VAR string tempcamfilepath;
+        VAR string tempctrlfilepath;
+        VAR bool oktocopy:=FALSE;
+
+        camdirname:=CamGetName(cam)+":/";
+        ctrldirname:=ctrldirname+"/";
+        OpenDir ctrldirectory,ctrldirname;
+
+        WHILE ReadDir(ctrldirectory,tempfilename) DO
+            !Only copy .job and .cxd files
+            IF ((StrMatch(tempfilename,1,".job")<=strlen(tempfilename)) OR (StrMatch(tempfilename,1,".cxd")<=strlen(tempfilename))) AND tempfilename<>"." AND tempfilename<>".." THEN
+                oktocopy:=TRUE;
+            ELSE
+                oktocopy:=FALSE;
+            ENDIF
+
+            IF oktocopy THEN
+                tempcamfilepath:=camdirname+tempfilename;
+                tempctrlfilepath:=ctrldirname+tempfilename;
+                CopyFile tempctrlfilepath,tempcamfilepath;
+            ENDIF
+        ENDWHILE
+
+        CloseDir ctrldirectory;
+    ERROR
+        IF ERRNO=ERR_FILEEXIST THEN
+            IF replaceexistingfiles THEN
+                RemoveFile tempcamfilepath;
+                RETRY;
+            ELSE
+                TRYNEXT;
+            ENDIF
+        ENDIF
+    ENDPROC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcVisionWobjHandCamera                 *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calculates a wobj from two images, given *
+    !*               a already defined working plane          *
+    !*                                                        *
+    !* IN:           pTakePicture: Where to take picture      *
+    !*               CameraValue: Don't know ...              *
+    !*                                                        *
+    !* OPTIONAL:     psImagePlane: The plane where the object *
+    !*                             is located on.             *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    FUNC wobjdata CalcVisionWobjHandCamera(robtarget pTakePicture,pos CameraValue,\pose psImagePlane)
+        VAR pose tablePose;
+        VAR num nCameraFrameAngle;
+        VAR pose psImagePlaneProjection;
+        VAR pose psIPinv;
+        VAR wobjdata retWobj;
+
+        retWobj.robhold:=FALSE;
+        retWobj.ufprog:=TRUE;
+        IF Present(psImagePlane) THEN
+            tablePose:=psImagePlane;
+        ELSE
+            tablePose.trans:=[0,0,0];
+            tablePose.rot:=OrientZYX(180,0,180);
+        ENDIF
+        retWobj.uframe:=[pTakePicture.trans,pTakePicture.rot];
+        !Express the ImagePlane in CameraFrame
+        psImagePlaneProjection:=PoseMult(PoseInv(retWobj.uframe),tablePose);
+        psIPinv:=PoseInv(psImagePlaneProjection);
+        !Take Z angle of CameraFrame expressed in tablepose
+        nCameraFrameAngle:=EulerZYX(\Z,psIPinv.rot);
+        !Add the CameraFrame rotation about Z axis.  
+        psImagePlaneProjection:=PoseMult(psImagePlaneProjection,[[0,0,0],OrientZYX(nCameraFrameAngle,0,0)]);
+
+        retWobj.oframe:=CalcObjFrame(psImagePlaneProjection,[CameraValue.x,CameraValue.y,CameraValue.z],-Yumi_App_ZOffset,HandCamera_Kinv);
+        retWobj.oframe:=PoseMult(retWobj.oframe,[[0,0,0],OrientZYX(0,180,0)]);
+        RETURN retWobj;
+    ENDFUNC
+    
 ENDMODULE
