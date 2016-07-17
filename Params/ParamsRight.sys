@@ -1,0 +1,50 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE ParamsRight(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: ParamsRight                               *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* A module just containing variables that are specific   *
+    !* for the right arm. This is used like a C-like struct   *
+    !* or something similar. This module should NOT contain   *
+    !* any routines. Nothing else except raw parameters.      *
+    !* Of course we strive to have as few individual          *
+    !* parameters as possible                                 *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: -                                        *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-17   1.0        Fredrik LÃ¶fgren      created   *
+    !**********************************************************
+
+
+    ! Has to be PERS to be accepted by Move instructions.
+    TASK PERS tooldata CurrGripper:=[TRUE,[[0,0,136],[1,0,0,0]],[0.230,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,0.00009]];
+    TASK PERS jointtarget HomePos:=[[65,-140,50,-115,50,-2],[-70,9E9,9E9,9E9,9E9,9E9]];
+    TASK PERS zonedata SelZone:=[FALSE,10,15,15,1.5,15,1.5];
+    TASK PERS speeddata SelSpeed:=[1500,500,5000,1000];
+    TASK PERS robtarget pShowABBLogo:=[[400,-200,400],[0,0,0,-1],[1,0,0,11],[-110,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS loaddata SelLoad:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
+    TASK PERS string config_io_string:="flange_24V_ROB_R";
+    TASK PERS string VisionSystemName:="HandCameraR";
+
+    !Define these points so that they fit within the field of view of the camera. 
+    !The first four points define the four corners of the field of view at the highest altitude (z-direction) of the calibration pyramid pattern.
+    !The fifth point defines the lowest point that the robot may reach during the calibration run (in z-direction). 
+    TASK PERS robtarget pCamera_Calib_1:=[[479.97,-60.59,357.86],[0.963591,0.0128549,-0.267033,0.00460414],[1,-1,1,11],[-102.101,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_2:=[[431.13,-60,337.42],[0.963594,0.0128811,-0.26702,0.00459979],[1,-1,1,11],[-102.057,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_3:=[[368.07,-60,424.92],[0.963598,0.0129005,-0.267003,0.0046068],[1,-1,1,11],[-102.03,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_4:=[[425.57,-60,457.94],[0.963591,0.0128538,-0.267033,0.0046038],[1,0,1,11],[-102.11,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_5:=[[424.90,-280,349.23],[0.966064,-2.11471E-05,-0.258303,-0.000303178],[1,0,1,11],[-102,9E+09,9E+09,9E+09,9E+09,9E+09]];
+
+ENDMODULE

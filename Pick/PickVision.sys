@@ -63,20 +63,21 @@ MODULE PickVision(SYSMODULE,NOVIEW)
 
         pTakePicture:=CRobT(\Tool:=tHandCamera\WObj:=wobj0);
 
-        !OpenHand;
-        CheckIfVisionExists YuMi_App_VisionCamera,camera;
+        OpenHand;
 
-        !currentjob:=CamGetLoadedJob(camera);
-        !IF currentjob="" THEN
-        !    TPWrite "No job loaded in camera "+YuMi_App_VisionCamera;
-        !    STOP;
-        !ENDIF
+        CheckIfVisionExists VisionSystemName,camera;
+
+        currentjob:=CamGetLoadedJob(camera);
+        IF currentjob="" THEN
+            TPWrite "No job loaded in camera "+VisionSystemName;
+            STOP;
+        ENDIF
 
         !Load camera job definition
-        InitCamera camera,"ResonatorBig.job";
+        InitCamera camera,currentjob;
 
         !Take the photo and get the result
-        !CamTakePicture camera,cameraValue;
+        TakePicture camera,cameraValue;
 
         tablePose.trans:=Yumi_App_Table_Pose.trans;
         tablePose.rot:=OrientZYX(180,0,180);
@@ -87,13 +88,11 @@ MODULE PickVision(SYSMODULE,NOVIEW)
         mRobTarget:=pPick;
         mRobTarget.robconf:=[0,0,0,11];
         !Note that the offs is relative to the Camera frame
-        MoveL Offs(mRobTarget,0,0,-50),v100,fine,GripperL\WObj:=WObj_VisionTest;
-        MoveL mRobTarget,v100,fine,GripperL\WObj:=WObj_VisionTest;
-        Hand_TurnOnVacuum1;
-        !Hand_GripInward;
-        MoveL Offs(mRobTarget,0,0,-50),v100,fine,GripperL\WObj:=WObj_VisionTest;
-        RETURN ;
-        MoveL pPick,v100,fine,GripperL\WObj:=WObj_VisionTest;
+        MoveL Offs(mRobTarget,0,0,-50),v100,fine,CurrGripper\WObj:=WObj_VisionTest;
+        MoveL mRobTarget,v100,fine,CurrGripper\WObj:=WObj_VisionTest;
+        !Hand_TurnOnVacuum1;
+        Hand_GripInward;
+        MoveL Offs(mRobTarget,0,0,-50),v100,fine,CurrGripper\WObj:=WObj_VisionTest;
 
     ENDPROC
 
@@ -131,11 +130,11 @@ MODULE PickVision(SYSMODULE,NOVIEW)
         !Open gripper
         !Set DO10_1;
 
-        CheckIfVisionExists YuMi_App_VisionCamera,camera;
-        InitCamera camera,"SignalCap.job";
+        CheckIfVisionExists VisionSystemName,camera;
+
         currentjob:=CamGetLoadedJob(camera);
         IF currentjob="" THEN
-            TPWrite "No job loaded in camera "+YuMi_App_VisionCamera;
+            TPWrite "No job loaded in camera "+VisionSystemName;
             STOP;
         ENDIF
 
@@ -153,27 +152,26 @@ MODULE PickVision(SYSMODULE,NOVIEW)
         WObj_VisionTest.uframe:=[pTakePicture.trans,pTakePicture.rot];
         WObj_VisionTest.oframe:=CalcObjFrame(PoseMult(PoseInv(WObj_VisionTest.uframe),tablePose),[CameraValue{1},CameraValue{2},CameraValue{3}],-Yumi_App_ZOffset,HandCamera_Kinv);
         !tHandCamera.tframe:=PoseMult(robotTCP.tframe,WObj_VisionTest.oframe);
-        !mRobTarget:=FindOptimalConfiguration(pPick,GripperL\WObj:=WObj_VisionTest\Axis5Positive);
+        !mRobTarget:=FindOptimalConfiguration(pPick,CurrGripper\WObj:=WObj_VisionTest\Axis5Positive);
         mRobTarget:=pPick;
         mRobTarget.robconf:=[0,0,0,11];
         !Note that the offs is relative to the Camera frame
-        Hand_GripOutward;
-        MoveL Offs(mRobTarget,0,0,-50),v50,fine,GripperL\WObj:=WObj_VisionTest;
+        MoveL Offs(mRobTarget,0,0,-50),v50,fine,CurrGripper\WObj:=WObj_VisionTest;
         VisionStatus:=1;
         Stop;
-        MoveL mRobTarget,v50,fine,GripperL\WObj:=WObj_VisionTest;
+        MoveL mRobTarget,v50,fine,CurrGripper\WObj:=WObj_VisionTest;
         !Hand_TurnOnVacuum1;
         Hand_GripInward;
-        MoveL Offs(mRobTarget,0,0,-50),v50,fine,GripperL\WObj:=WObj_VisionTest;
+        MoveL Offs(mRobTarget,0,0,-50),v50,fine,CurrGripper\WObj:=WObj_VisionTest;
         Hand_GripOutward;
         !Hand_TurnOffVacuum1;
         !Hand_TurnOnBlow1;
         !WaitTime 1;
         !Hand_TurnOffBlow1;
-        !MoveL [[395.60,-295.28,111.92],[6.11021E-05,-0.526551,-0.850144,2.23703E-05],[0,-2,0,11],[-158.118,9E+09,9E+09,9E+09,9E+09,9E+09]], v200, fine, GripperL;
+        !MoveL [[395.60,-295.28,111.92],[6.11021E-05,-0.526551,-0.850144,2.23703E-05],[0,-2,0,11],[-158.118,9E+09,9E+09,9E+09,9E+09,9E+09]], v200, fine, CurrGripper;
         !Hand_GripOutward;
         MoveL pTakePicture,v50,fine,tHandCamera;
         RETURN ;
-        MoveJ pPick,v300,fine,GripperL\WObj:=WObj_VisionTest;
+        MoveJ pPick,v300,fine,CurrGripper\WObj:=WObj_VisionTest;
     ENDPROC
 ENDMODULE

@@ -24,7 +24,6 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
 
-
     VAR jointtarget jtLastPosition;
     PERS bool bRestartMoveYActive;
     PERS bool bRestartMoveYOrdered;
@@ -33,23 +32,9 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     VAR errnum ERR_RESTART_MOVEY:=-1;
     VAR errnum YUMILIB_COLL_DETECTED:=-1;
 
-    PERS tooldata GripperL:=[TRUE,[[0,0,136],[1,0,0,0]],[0.230,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,0.00009]];
-    PERS tooldata GripperR:=[TRUE,[[0,0,136],[1,0,0,0]],[0.230,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,0.00009]];
-	LOCAL CONST jointtarget HomePosL := [ [ -65, -140, 50, 115, 50, 2], [ 70, 9E9, 9E9, 9E9, 9E9, 9E9] ];
-    LOCAL CONST jointtarget HomePosR := [ [ 65, -140, 50, -115, 50, -2], [ -70, 9E9, 9E9, 9E9, 9E9, 9E9] ];
-	
-    
-    ! TODO: Why not saving these inside a RECORD for right and left hand? So all settings are saved together.
-    ! And you just switch record entity for the current task
-	PERS zonedata YuMi_App_SelZoneR:= [FALSE,10,15,15,1.5,15,1.5];
-	PERS zonedata YuMi_App_SelZoneL:= [FALSE,10,15,15,1.5,15,1.5];
-
-	PERS speeddata YuMi_App_SelSpeedR:=[1500,500,5000,1000];
-	PERS speeddata YuMi_App_SelSpeedL:=[1500,500,5000,1000];
-
-    TASK PERS tooldata YuMi_App_move_tool_local := [ TRUE, [ [0, 0, 136], [1, 0, 0 ,0] ], [0.23, [8.2, 11.7, 52], [1, 0, 0, 0], 0.00021, 0.00024, 9E-05] ];
-    TASK PERS speeddata YuMi_App_move_speed_local :=[1500,100,5000,1000];
-    TASK PERS zonedata YuMi_App_move_zone_local :=[FALSE,10,15,15,1.5,15,1.5];
+    TASK PERS tooldata YuMi_App_move_tool_local:=[TRUE,[[0,0,136],[1,0,0,0]],[0.23,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,9E-05]];
+    TASK PERS speeddata YuMi_App_move_speed_local:=[1500,100,5000,1000];
+    TASK PERS zonedata YuMi_App_move_zone_local:=[FALSE,10,15,15,1.5,15,1.5];
 
     
     PERS tasks YuMi_App_task_list{2} := [ ["T_ROB_L"], ["T_ROB_R"] ];
@@ -544,7 +529,7 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
         IF Present(Speed) THEN
             YuMi_App_move_speed_local:=Speed;
         ELSE
-            GetSpeedData YuMi_App_move_speed_local;
+            YuMi_App_move_speed_local:=SelSpeed;
         ENDIF
         ! Limit the reorientation velocity of the TCP expressed in degrees/s. 
         YuMi_App_move_speed_local.v_ori:=100;
@@ -556,13 +541,13 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
             IF Present(Zone) THEN
                 YuMi_App_move_zone_local:=Zone;
             ELSE
-                GetZoneData YuMi_App_move_zone_local;
+                YuMi_App_move_zone_local:=SelZone;
             ENDIF
         ENDIF
         IF Present(Tool) THEN
             YuMi_App_move_tool_local := Tool;
         ELSE
-            GetToolData YuMi_App_move_tool_local;
+            YuMi_App_move_tool_local:=CurrGripper;
         ENDIF
 		SingArea \Wrist;
         !IF GetTaskName() = "T_ROB_R" THEN
@@ -604,89 +589,20 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
                ! Instruction detects the error, instruction is ended
                RAISE;
             ENDIF
-   
-    ENDPROC
-
-
-    !**********************************************************
-    !*                                                        *
-    !* ROUTINE NAME: GetSpeedData                             *
-    !*                                                        *
-    !**********************************************************
-    !*                                                        *
-    !* DESCRIPTION:  Sets the speed according to the task     *
-    !*               which is currently executing this        *
-    !*               routine. Either left or right arm.       *
-    !*                                                        *
-    !* INOUT:        loc: The speed that should be modified   *
-    !*                                                        *
-    !* Date:        Version:   Programmer:          Reason:   *
-    !* 2016-07-16   1.0        YuMi App             created   *
-    !**********************************************************
-	LOCAL PROC GetSpeedData(PERS speeddata loc)
-        IF GetTaskName()="T_ROB_R" THEN
-            loc := YuMi_App_SelSpeedR;
-        ELSEIF GetTaskName()="T_ROB_L" THEN
-            loc := YuMi_App_SelSpeedL;
-        ELSE
-            ErrWrite "GetSpeedData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
-            SystemStopAction\StopBlock;
         ENDIF
-    ENDPROC
-
-    !**********************************************************
-    !*                                                        *
-    !* ROUTINE NAME: GetZoneData                              *
-    !*                                                        *
-    !**********************************************************
-    !*                                                        *
-    !* DESCRIPTION:  Sets the zone according to the task      *
-    !*               which is currently executing this        *
-    !*               routine. Either left or right arm.       *
-    !*                                                        *
-    !* INOUT:        loc: The zone that should be modified    *
-    !*                                                        *
-    !* Date:        Version:   Programmer:          Reason:   *
-    !* 2016-07-16   1.0        YuMi App             created   *
-    !**********************************************************
-    LOCAL PROC GetZoneData(PERS zonedata loc)
-        IF GetTaskName()="T_ROB_R" THEN
-            loc := YuMi_App_SelZoneR;
-        ELSEIF GetTaskName()="T_ROB_L" THEN
-            loc := YuMi_App_SelZoneL;
-        ELSE
-            ErrWrite "GetZoneData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
-            SystemStopAction\StopBlock;
+        IF Present(Sync) THEN
+            WaitSyncTask YuMi_App_sync1,YuMi_App_task_list;
         ENDIF
-    ENDPROC
 
-    !**********************************************************
-    !*                                                        *
-    !* ROUTINE NAME: GetToolData                              *
-    !*                                                        *
-    !**********************************************************
-    !*                                                        *
-    !* DESCRIPTION:  Sets the tool according to the task      *
-    !*               which is currently executing this        *
-    !*               routine. Either left or right arm.       *
-    !*                                                        *
-    !* INOUT:        loc: The tool that should be modified    *
-    !*                                                        *
-    !* Date:        Version:   Programmer:          Reason:   *
-    !* 2016-07-16   1.0        YuMi App             created   *
-    !**********************************************************
-    LOCAL PROC GetToolData(PERS tooldata loc)
-		VAR tooldata loc1;
-        IF GetTaskName()="T_ROB_R" THEN
-			GetDataVal "GripperR",loc1;
-            loc := loc1;
-        ELSEIF GetTaskName()="T_ROB_L" THEN
-			GetDataVal "GripperL",loc1;
-            loc := loc1;
+    ERROR
+        IF ERRNO=ERR_PATH_STOP OR ERRNO=ERR_COLL_STOP THEN
+            ! Asynchronous error handling. Raise the error to the user without ending instruction
+            RaiseToUser\Continue;
         ELSE
-            ErrWrite "GetToolData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
-            SystemStopAction\StopBlock;
+            ! Instruction detects the error, instruction is ended
+            RAISE ;
         ENDIF
+
     ENDPROC
 
     
@@ -701,19 +617,12 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
-	PROC GotoHome()
-		VAR speeddata mySpeed;
-        mySpeed := v200;
-        mySpeed.v_ori := 100;
-        IF GetTaskName()="T_ROB_R" THEN
-			MoveABSJ HomePosR,mySpeed,fine,GripperR;
-        ELSEIF GetTaskName()="T_ROB_L" THEN
-            MoveABSJ HomePosL,mySpeed,fine,GripperL;
-        ELSE
-            ErrWrite "GetToolData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
-            SystemStopAction\StopBlock;
-        ENDIF
-		Stop;
-	ENDPROC
-    
+    PROC GotoHome()
+        VAR speeddata mySpeed;
+        mySpeed:=v200;
+        mySpeed.v_ori:=100;
+        MoveABSJ HomePos,mySpeed,fine,CurrGripper;
+        Stop;
+    ENDPROC
+
 ENDMODULE

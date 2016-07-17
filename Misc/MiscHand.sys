@@ -23,11 +23,6 @@ MODULE MiscHand(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik LÃ¶fgren      created   *
     !**********************************************************
 
-    PERS loaddata YuMi_App_SelLoadL:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
-    PERS loaddata YuMi_App_SelLoadR:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
-
-    LOCAL CONST string config_io_string_L:="flange_24V_ROB_L";
-    LOCAL CONST string config_io_string_R:="flange_24V_ROB_R";
     LOCAL VAR signaldo hand_Power;
 
     !**********************************************************
@@ -42,14 +37,7 @@ MODULE MiscHand(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
     PROC InitHand()
-        IF GetTaskName()="T_ROB_R" THEN
-		    AliasIO config_io_string_R,hand_Power;
-        ELSEIF GetTaskName()="T_ROB_L" THEN
-		    AliasIO config_io_string_L,hand_Power;
-        ELSE
-            ErrWrite "Hand ERROR","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
-            SystemStopAction\StopBlock;
-        ENDIF
+        AliasIO config_io_string,hand_Power;
         SetDO hand_Power,1;
         WaitTime 0.2;
         Hand_Initialize\Calibrate;
@@ -58,8 +46,8 @@ MODULE MiscHand(SYSMODULE,NOVIEW)
         Hand_Stop;
         Stop;
     ENDPROC
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: OpenHand                                 *
@@ -146,14 +134,7 @@ MODULE MiscHand(SYSMODULE,NOVIEW)
             GripLoad Load;
         ELSE
             IF action THEN
-                IF GetTaskName()="T_ROB_R" THEN
-                    GripLoad YuMi_App_SelLoadR;
-                ELSEIF GetTaskName()="T_ROB_L" THEN
-                    GripLoad YuMi_App_SelLoadL;
-                ELSE
-                    ErrWrite "Hand ERROR","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
-                    SystemStopAction\StopBlock;
-                ENDIF
+                GripLoad SelLoad;
             ELSE
                 GripLoad load0;
             ENDIF

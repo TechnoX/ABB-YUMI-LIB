@@ -45,16 +45,7 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
     PROC Calib_HandCamera()
-        !Define these points so that they fit within the field of view of the camera. 
-        !The first four points define the four corners of the field of view at the highest altitude (z-direction) of the calibration pyramid pattern.
-        !The fifth point defines the lowest point that the robot may reach during the calibration run (in z-direction). 
-        CONST robtarget pCamera_Calib_1:=[[425,50,350],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
-        CONST robtarget pCamera_Calib_2:=[[355,50,350],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
-        CONST robtarget pCamera_Calib_3:=[[355,50,450],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
-        CONST robtarget pCamera_Calib_4:=[[425,50,450],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
-        CONST robtarget pCamera_Calib_5:=[[390,200,400],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
-        CONST robtarget pCamera_Calib_train:=[[405,100,400],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
-        ! ?
+
         VAR robtarget robTargets{5};
         VAR wobjdata CameraWobj:=[FALSE,TRUE,"",[[21.4601,-1062.56,1134.32],[0.999437,-0.00286496,-0.00635449,0.0328053]],[[0,0,0],[1,0,0,0]]];
 
@@ -62,9 +53,13 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         VAR pose cameraFrame;
         VAR pos markerPos;
         VAR cameradev handCamera;
+
+
         !The reference robtargets that define the calibration pose envelope
         robTargets:=[pCamera_Calib_1,pCamera_Calib_2,pCamera_Calib_3,pCamera_Calib_4,pCamera_Calib_5];
-        CheckIfVisionExists YuMi_App_VisionCamera,handCamera;
+
+        CheckIfVisionExists VisionSystemName,handCamera;
+
         !Get jobs from controller
         RestoreCtrlToCamera handCamera,FALSE;
 
@@ -75,8 +70,7 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         CalibCamera robTargets,tool_YuMiGripper_S_C,cameraFrame,markerPos,handcamera\Kinv:=HandCamera_Kinv\K:=HandCamera_K\print\HandHeldCamera;
 
         tHandCamera.tframe:=cameraFrame;
-        tHandCamera.tload:=GripperL.tload;
-
+        tHandCamera.tload:=CurrGripper.tload;
         Calibrated:=1;
 
         Stop;
@@ -89,12 +83,11 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         ENDIF
 
         SingArea\Wrist;
-        MoveJ pCamera_Calib_1,v200,fine,tool_YuMiGripper_S_C;
-        MoveL pCamera_Calib_2,v200,fine,tool_YuMiGripper_S_C;
-        MoveL pCamera_Calib_3,v200,fine,tool_YuMiGripper_S_C;
-        MoveL pCamera_Calib_4,v200,fine,tool_YuMiGripper_S_C;
-        MoveL pCamera_Calib_5,v200,fine,tool_YuMiGripper_S_C;
-        MoveL pCamera_Calib_train,v200,fine,tool_YuMiGripper_S_C;
+        MoveJ robTargets{1},v200,fine,tool_YuMiGripper_S_C;
+        MoveL robTargets{2},v200,fine,tool_YuMiGripper_S_C;
+        MoveL robTargets{3},v200,fine,tool_YuMiGripper_S_C;
+        MoveL robTargets{4},v200,fine,tool_YuMiGripper_S_C;
+        MoveL robTargets{5},v200,fine,tool_YuMiGripper_S_C;
     ENDPROC
 
 
@@ -112,10 +105,6 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
     PROC ShowABBLogo()
-      
-      CONST robtarget pShowABBLogo := [[400,200,400],[0.962975,-0.00425686,-0.269271,-0.0124256],[-2,-1,-2,11],[110.128,9E+09,9E+09,9E+09,9E+09,9E+09]];
-      
-        !MoveJ [[400.93,200,400],[0.961134,-0.00433577,-0.275627,-0.0152158],[-2,-1,-2,11],[110.282,9E+09,9E+09,9E+09,9E+09,9E+09]],v50,z50,tool0;
         MoveJ pShowABBLogo,v50,fine,tool0;
         Stop;
     ENDPROC

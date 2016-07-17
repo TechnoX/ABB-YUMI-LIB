@@ -1,0 +1,50 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE ParamsLeft(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: ParamsLeft                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* A module just containing variables that are specific   *
+    !* for the left arm. This is used like a C-like struct or *
+    !* something similar. This module should NOT contain any  *
+    !* routines. Nothing else except raw parameters.          *
+    !* Of course we strive to have as few individual          *
+    !* parameters as possible                                 *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: -                                        *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-17   1.0        Fredrik Lofgren      created  *
+    !**********************************************************
+
+
+    ! Has to be PERS to be accepted by Move instructions.
+    TASK PERS tooldata CurrGripper:=[TRUE,[[0,0,136],[1,0,0,0]],[0.230,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,0.00009]];
+    TASK PERS jointtarget HomePos:=[[-65,-140,50,115,50,2],[70,9E9,9E9,9E9,9E9,9E9]];
+    TASK PERS zonedata SelZone:=[FALSE,10,15,15,1.5,15,1.5];
+    TASK PERS speeddata SelSpeed:=[1500,500,5000,1000];
+    TASK PERS robtarget pShowABBLogo:=[[400,200,400],[0.962975,-0.00425686,-0.269271,-0.0124256],[-2,-1,-2,11],[110.128,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS loaddata SelLoad:=[0.001,[0,0,1],[1,0,0,0],0,0,0];
+    TASK PERS string config_io_string:="flange_24V_ROB_L";
+    TASK PERS string VisionSystemName:="HandCameraL";
+
+    !Define these points so that they fit within the field of view of the camera. 
+    !The first four points define the four corners of the field of view at the highest altitude (z-direction) of the calibration pyramid pattern.
+    !The fifth point defines the lowest point that the robot may reach during the calibration run (in z-direction). 
+    TASK PERS robtarget pCamera_Calib_1:=[[425,50,350],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_2:=[[355,50,350],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_3:=[[355,50,450],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_4:=[[425,50,450],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    TASK PERS robtarget pCamera_Calib_5:=[[390,200,400],[0,0,0,1],[-2,0,1,11],[110,9E+09,9E+09,9E+09,9E+09,9E+09]];
+
+ENDMODULE
