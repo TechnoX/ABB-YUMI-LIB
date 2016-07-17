@@ -33,7 +33,11 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     VAR errnum ERR_RESTART_MOVEY:=-1;
     VAR errnum YUMILIB_COLL_DETECTED:=-1;
 
-    
+    PERS tooldata GripperL:=[TRUE,[[0,0,136],[1,0,0,0]],[0.230,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,0.00009]];
+    PERS tooldata GripperR:=[TRUE,[[0,0,136],[1,0,0,0]],[0.230,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,0.00009]];
+	LOCAL CONST jointtarget HomePosL := [ [ -65, -140, 50, 115, 50, 2], [ 70, 9E9, 9E9, 9E9, 9E9, 9E9] ];
+    LOCAL CONST jointtarget HomePosR := [ [ 65, -140, 50, -115, 50, -2], [ -70, 9E9, 9E9, 9E9, 9E9, 9E9] ];
+	
     
     ! TODO: Why not saving these inside a RECORD for right and left hand? So all settings are saved together.
     ! And you just switch record entity for the current task
@@ -685,4 +689,31 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
         ENDIF
     ENDPROC
 
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: GotoHome                                 *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Goes to home position with the arm       *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+	PROC GotoHome()
+		VAR speeddata mySpeed;
+        mySpeed := v200;
+        mySpeed.v_ori := 100;
+        IF GetTaskName()="T_ROB_R" THEN
+			MoveABSJ HomePosR,mySpeed,fine,GripperR;
+        ELSEIF GetTaskName()="T_ROB_L" THEN
+            MoveABSJ HomePosL,mySpeed,fine,GripperL;
+        ELSE
+            ErrWrite "GetToolData()","Wrong taskname on task."\RL2:="Taskname: "+GetTaskName()\RL3:="Change taskname in configuration.";
+            SystemStopAction\StopBlock;
+        ENDIF
+		Stop;
+	ENDPROC
+    
 ENDMODULE
