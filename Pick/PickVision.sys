@@ -1,0 +1,179 @@
+%%%
+    VERSION:1
+    LANGUAGE:ENGLISH
+%%%
+
+MODULE PickVision(SYSMODULE,NOVIEW)
+    !**********************************************************
+    !*                                                        *
+    !* Module name: PickVision                                *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* Routines for making a vision guided pick               *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: Internal                                 *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik Lofgren      created   *
+    !**********************************************************
+
+    TASK PERS robtarget pPick:=[[0,0,5],[0.0570794,-0.0194117,0.00363978,0.998174],[1,-2,-1,11],[-152.388,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    LOCAL VAR robtarget pTakePicture;
+	
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: VisionPick                               *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Performs a vision guided pick            *
+    !*                                                        *
+    !* IN:           ToPoint: Where to end the pick           *
+    !*                                                        *
+    !* OPTIONAL:     Speed: The speed to make the pick        *
+	!*               Zone: The zone size to be used           *
+	!*               Tool: The tool to be used                *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC VisionPick(
+        robtarget ToPoint,
+        \speeddata Speed
+        \zonedata Zone
+		\tooldata Tool)
+
+        VAR cameratarget camtarget;
+        VAR robtarget temprobtarget;
+        VAR num cameraValue{3};
+        VAR string currentjob;
+        VAR cameradev camera;
+
+        VAR pose tablePose;
+        VAR robtarget mRobTarget;
+        VAR robtarget pTakePicture;
+
+        Move ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
+        WaitTime\InPos,0;
+
+        pTakePicture:=CRobT(\Tool:=tHandCamera\WObj:=wobj0);
+
+        !OpenHand;
+        CheckIfVisionExists YuMi_App_VisionCamera,camera;
+
+        !currentjob:=CamGetLoadedJob(camera);
+        !IF currentjob="" THEN
+        !    TPWrite "No job loaded in camera "+YuMi_App_VisionCamera;
+        !    STOP;
+        !ENDIF
+
+        !Load camera job definition
+        InitCamera camera,"ResonatorBig.job";
+
+        !Take the photo and get the result
+        !CamTakePicture camera,cameraValue;
+
+        tablePose.trans:=Yumi_App_Table_Pose.trans;
+        tablePose.rot:=OrientZYX(180,0,180);
+        WObj_VisionTest.uframe:=[pTakePicture.trans,pTakePicture.rot];
+        WObj_VisionTest.oframe:=CalcObjFrame(PoseMult(PoseInv(WObj_VisionTest.uframe),tablePose),[CameraValue{1},CameraValue{2},CameraValue{3}],-Yumi_App_ZOffset,HandCamera_Kinv);
+        !tHandCamera.tframe:=PoseMult(robotTCP.tframe,WObj_VisionTest.oframe);
+        !mRobTarget:=FindOptimalConfiguration(pPick,GripperL\WObj:=WObj_VisionTest\Axis5Positive);
+        mRobTarget:=pPick;
+        mRobTarget.robconf:=[0,0,0,11];
+        !Note that the offs is relative to the Camera frame
+        MoveL Offs(mRobTarget,0,0,-50),v100,fine,GripperL\WObj:=WObj_VisionTest;
+        MoveL mRobTarget,v100,fine,GripperL\WObj:=WObj_VisionTest;
+        Hand_TurnOnVacuum1;
+        !Hand_GripInward;
+        MoveL Offs(mRobTarget,0,0,-50),v100,fine,GripperL\WObj:=WObj_VisionTest;
+        RETURN ;
+        MoveL pPick,v100,fine,GripperL\WObj:=WObj_VisionTest;
+
+    ENDPROC
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: TrainVisionPick                          *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Train a vision guided pick               *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC TrainVisionPick()
+        !VAR robtarget pTakePicture:=[[362.37,-97.70,370.14],[2.49306E-05,-0.699698,-0.714439,2.15999E-06],[0,-1,-2,11],[-150.4,9E+09,9E+09,9E+09,9E+09,9E+09]];
+        !CONST robtarget pTakePicture2:=[[400.37,-50.70,480.14],[2.49306E-05,-0.699698,-0.714439,2.15999E-06],[0,-1,-2,11],[-150.4,9E+09,9E+09,9E+09,9E+09,9E+09]];
+        VAR num CameraValue{3};
+        VAR cameratarget mCamTarget;
+        VAR robtarget mRobTarget;
+        VAR pose tablePose;
+        VAR string currentjob;
+        VAR cameradev camera;
+
+        HandInit;
+        !SingArea\Wrist;
+        pTakePicture:=CRobT(\Tool:=tHandCamera\WObj:=wobj0);
+        TakePictureInt;
+
+        !MoveL pTakePicture,v50,fine,tHandCamera;
+        !tHandCamera.tload:=HandRight.tload;
+        !MoveL pTakePicture,v200,fine,tHandCamera;
+
+        !Open gripper
+        !Set DO10_1;
+
+        CheckIfVisionExists YuMi_App_VisionCamera,camera;
+        InitCamera camera,"SignalCap.job";
+        currentjob:=CamGetLoadedJob(camera);
+        IF currentjob="" THEN
+            TPWrite "No job loaded in camera "+YuMi_App_VisionCamera;
+            STOP;
+        ENDIF
+
+
+        !Load job that locates part
+
+        !InitCamera HandCameraR,"Part_A.job";
+
+        CamReqImage camera;
+        CamGetResult camera,mCamTarget;
+        CameraValue:=[mCamTarget.cframe.trans.x,mCamTarget.cframe.trans.y,0];
+        TPWrite "CameraValue"\Pos:=[CameraValue{1},CameraValue{2},CameraValue{3}];
+        tablePose.trans:=Yumi_App_Table_Pose.trans;
+        tablePose.rot:=OrientZYX(180,0,180);
+        WObj_VisionTest.uframe:=[pTakePicture.trans,pTakePicture.rot];
+        WObj_VisionTest.oframe:=CalcObjFrame(PoseMult(PoseInv(WObj_VisionTest.uframe),tablePose),[CameraValue{1},CameraValue{2},CameraValue{3}],-Yumi_App_ZOffset,HandCamera_Kinv);
+        !tHandCamera.tframe:=PoseMult(robotTCP.tframe,WObj_VisionTest.oframe);
+        !mRobTarget:=FindOptimalConfiguration(pPick,GripperL\WObj:=WObj_VisionTest\Axis5Positive);
+        mRobTarget:=pPick;
+        mRobTarget.robconf:=[0,0,0,11];
+        !Note that the offs is relative to the Camera frame
+        Hand_GripOutward;
+        MoveL Offs(mRobTarget,0,0,-50),v50,fine,GripperL\WObj:=WObj_VisionTest;
+        VisionStatus:=1;
+        Stop;
+        MoveL mRobTarget,v50,fine,GripperL\WObj:=WObj_VisionTest;
+        !Hand_TurnOnVacuum1;
+        Hand_GripInward;
+        MoveL Offs(mRobTarget,0,0,-50),v50,fine,GripperL\WObj:=WObj_VisionTest;
+        Hand_GripOutward;
+        !Hand_TurnOffVacuum1;
+        !Hand_TurnOnBlow1;
+        !WaitTime 1;
+        !Hand_TurnOffBlow1;
+        !MoveL [[395.60,-295.28,111.92],[6.11021E-05,-0.526551,-0.850144,2.23703E-05],[0,-2,0,11],[-158.118,9E+09,9E+09,9E+09,9E+09,9E+09]], v200, fine, GripperL;
+        !Hand_GripOutward;
+        MoveL pTakePicture,v50,fine,tHandCamera;
+        RETURN ;
+        MoveJ pPick,v300,fine,GripperL\WObj:=WObj_VisionTest;
+    ENDPROC
+ENDMODULE

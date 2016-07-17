@@ -15,7 +15,7 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     !* Various functions for managing / handling the cameras  *
     !*                                                        *
     !*                                                        *
-    !* DEPENDENCIES: <Modules that this depend on>            *
+    !* DEPENDENCIES: Internal                                 *
     !*                                                        *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
@@ -23,10 +23,15 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     !**********************************************************
 
     TASK PERS num VisionStatus:=1;
-    TASK PERS num HandCamera_Kinv{3,3}:=[[0.000603527,-1.21629E-06,-0.403364],[0,0.000604937,-0.296785],[0,0,1]];
     TASK PERS num Yumi_App_ZOffset:=11.7;
 
+    TASK PERS pose Yumi_App_Table_Pose:=[[0,0,0],[1,0,0,0]];
+    TASK PERS wobjdata WObj_VisionTest:=[FALSE,TRUE,"",[[459.134,163.411,389.156],[0.0294562,-0.698647,0.714295,-0.028404]],[[99.0572,21.0114,376.763],[0.714295,-0.028404,0.0294562,0.698647]]];
+    TASK PERS tooldata tHandCamera:=[TRUE,[[-6.60187,25.9996,36.7599],[0.497457,-0.508011,-0.501783,-0.49262]],[0.23,[8.2,11.7,52],[1,0,0,0],0.00021,0.00024,9E-05]];
+    TASK PERS string YuMi_App_VisionCamera:="HandCameraL";
 
+    LOCAL VAR robtarget pTakePicture;
+    
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcCameraDepth                          *
@@ -365,5 +370,98 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
         retWobj.oframe:=PoseMult(retWobj.oframe,[[0,0,0],OrientZYX(0,180,0)]);
         RETURN retWobj;
     ENDFUNC
+
+
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: CalcVisionWobj                           *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Calculates a world object from an image? *
+    !*                                                        *
+    !* IN:           CameraValue: Don't know ...              *
+    !*                                                        *
+    !* OPTIONAL:     psImagePlane: The plane where the object *
+    !*                             is located on.             *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC CalcVisionWobj(pos CameraValue,\pose psImagePlane)
+        VAR pose tablePose;
+        IF Present(psImagePlane) THEN
+            tablePose:=psImagePlane;
+        ELSE
+            tablePose.trans:=Yumi_App_Table_Pose.trans;
+            tablePose.rot:=OrientZYX(180,0,180);
+        ENDIF
+        WObj_VisionTest.uframe:=[pTakePicture.trans,pTakePicture.rot];
+        WObj_VisionTest.oframe:=CalcObjFrame(PoseMult(PoseInv(WObj_VisionTest.uframe),tablePose),[CameraValue.x,CameraValue.y,CameraValue.z],-Yumi_App_ZOffset,HandCamera_Kinv);
+        WObj_VisionTest.oframe:=PoseMult(WObj_VisionTest.oframe,[[0,0,0],OrientZYX(0,180,0)]);
+    ENDPROC
+    
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: TakePictureInt                           *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Moves the camera to a position where it  *
+    !*               should take a picture. Don't know which  *
+    !*               position or when this function is used.  *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC TakePictureInt()
+        SingArea\Wrist;
+        MoveL pTakePicture,v1000,z50,tHandCamera;
+    ENDPROC
+
+    
+    
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: TakePicture2                             *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Takes a picture                          *
+    !*                                                        *
+    !* IN:           ToPoint: Where to take the picture       *
+    !*                                                        *
+    !* OPTIONAL:     Speed: The speed to move to the point    *
+    !*               Zone: The zone size to use when moving   *
+    !*               Tool: The tool to use when moving        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        YuMi App             created   *
+    !**********************************************************
+    PROC TakePicture2(
+        robtarget ToPoint,
+        \speeddata Speed
+        \zonedata Zone
+		\tooldata Tool)
+
+        VAR num cameraValue{3};
+        VAR string currentjob;
+        VAR cameradev camera;
+
+        Move ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
+        WaitTime\InPos,0;
+
+        pTakePicture:=CRobT(\Tool:=tHandCamera\WObj:=wobj0);
+        CheckIfVisionExists YuMi_App_VisionCamera,camera;
+        !Load camera job definition
+        InitCamera camera,"ResonatorBig.job";
+
+        !Take the photo and get the result
+        !CamTakePicture camera,cameraValue;
+    ENDPROC
+    
     
 ENDMODULE
