@@ -24,7 +24,7 @@ MODULE PickVision(SYSMODULE,NOVIEW)
 
     TASK PERS robtarget pPick:=[[0,0,5],[0.0570794,-0.0194117,0.00363978,0.998174],[1,-2,-1,11],[-152.388,9E+09,9E+09,9E+09,9E+09,9E+09]];
     LOCAL VAR robtarget pTakePicture;
-	
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: VisionPick                               *
@@ -36,8 +36,8 @@ MODULE PickVision(SYSMODULE,NOVIEW)
     !* IN:           ToPoint: Where to end the pick           *
     !*                                                        *
     !* OPTIONAL:     Speed: The speed to make the pick        *
-	!*               Zone: The zone size to be used           *
-	!*               Tool: The tool to be used                *
+    !*               Zone: The zone size to be used           *
+    !*               Tool: The tool to be used                *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        YuMi App             created   *
@@ -96,8 +96,8 @@ MODULE PickVision(SYSMODULE,NOVIEW)
         MoveL pPick,v100,fine,GripperL\WObj:=WObj_VisionTest;
 
     ENDPROC
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: TrainVisionPick                          *

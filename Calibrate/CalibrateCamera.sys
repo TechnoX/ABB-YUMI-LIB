@@ -26,12 +26,12 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     TASK PERS wobjdata calwobj:=[FALSE,TRUE,"",[[427.52,-170.005,400.103],[0.355326,-0.325694,-0.632327,-0.606489]],[[0,0,0],[1,0,0,0]]];
     TASK PERS num HandCamera_K{3,3}:=[[1656.93,3.33143,669.334],[0,1653.06,490.605],[0,0,1]];
     TASK PERS num HandCamera_Kinv{3,3}:=[[0.000603527,-1.21629E-06,-0.403364],[0,0.000604937,-0.296785],[0,0,1]];
-    
+
     LOCAL CONST num calibcameraPoints:=15;
 
     TASK PERS num Calibrated:=1;
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: Calib_HandCamera                         *
@@ -64,7 +64,7 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         VAR cameradev handCamera;
         !The reference robtargets that define the calibration pose envelope
         robTargets:=[pCamera_Calib_1,pCamera_Calib_2,pCamera_Calib_3,pCamera_Calib_4,pCamera_Calib_5];
-        CheckIfVisionExists YuMi_App_VisionCamera, handCamera;
+        CheckIfVisionExists YuMi_App_VisionCamera,handCamera;
         !Get jobs from controller
         RestoreCtrlToCamera handCamera,FALSE;
 
@@ -97,8 +97,8 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         MoveL pCamera_Calib_train,v200,fine,tool_YuMiGripper_S_C;
     ENDPROC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: ShowABBLogo                              *
@@ -119,6 +119,8 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         MoveJ pShowABBLogo,v50,fine,tool0;
         Stop;
     ENDPROC
+
+
 
     !**********************************************************
     !*                                                        *

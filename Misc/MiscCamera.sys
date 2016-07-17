@@ -31,7 +31,7 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     TASK PERS string YuMi_App_VisionCamera:="HandCameraL";
 
     LOCAL VAR robtarget pTakePicture;
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcCameraDepth                          *
@@ -372,7 +372,7 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
     ENDFUNC
 
 
-    
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: CalcVisionWobj                           *
@@ -401,9 +401,9 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
         WObj_VisionTest.oframe:=CalcObjFrame(PoseMult(PoseInv(WObj_VisionTest.uframe),tablePose),[CameraValue.x,CameraValue.y,CameraValue.z],-Yumi_App_ZOffset,HandCamera_Kinv);
         WObj_VisionTest.oframe:=PoseMult(WObj_VisionTest.oframe,[[0,0,0],OrientZYX(0,180,0)]);
     ENDPROC
-    
-    
-    
+
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: TakePictureInt                           *
@@ -422,8 +422,8 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
         MoveL pTakePicture,v1000,z50,tHandCamera;
     ENDPROC
 
-    
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: TakePicture2                             *
@@ -462,6 +462,6 @@ MODULE MiscCamera(SYSMODULE,NOVIEW)
         !Take the photo and get the result
         !CamTakePicture camera,cameraValue;
     ENDPROC
-    
-    
+
+
 ENDMODULE
