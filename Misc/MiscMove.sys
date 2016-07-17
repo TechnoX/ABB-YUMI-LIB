@@ -36,10 +36,8 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     TASK PERS speeddata YuMi_App_move_speed_local:=[1500,100,5000,1000];
     TASK PERS zonedata YuMi_App_move_zone_local:=[FALSE,10,15,15,1.5,15,1.5];
 
-    
-    PERS tasks YuMi_App_task_list{2} := [ ["T_ROB_L"], ["T_ROB_R"] ];
-	VAR syncident YuMi_App_sync1;
-	
+    PERS tasks YuMi_App_task_list{2}:=[["T_ROB_L"],["T_ROB_R"]];
+    VAR syncident YuMi_App_sync1;
 
 
     !**********************************************************
@@ -378,13 +376,13 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
 
 
 
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: Move                                     *
@@ -406,33 +404,33 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
     PROC Move(
-		\switch J | switch L,
+		\switch J|switch L,
         robtarget ToPoint
         \speeddata Speed
         \zonedata Zone
 		\tooldata Tool)
         IF Present(J) THEN
-            Move_internal \J, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool ;
+            Move_internal\J,ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
         ELSEIF Present(L) THEN
-            Move_internal \L, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool ;
-		ELSE
-			Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool ;
-        ENDIF        
-        
+            Move_internal\L,ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
+        ELSE
+            Move_internal ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
+        ENDIF
+
     BACKWARD
         !TPWrite "Move BACKWARD";
-        Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool;
+        Move_internal ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
 
 
-        ERROR
-            IF ERRNO = ERR_PATH_STOP OR ERRNO = ERR_COLL_STOP THEN
-               ! Asynchronous error handling. Raise the error to the user without ending instruction
-                RaiseToUser \Continue;
-            ELSE
-               ! Instruction detects the error, instruction is ended
-               RAISE;
-            ENDIF
-        
+    ERROR
+        IF ERRNO=ERR_PATH_STOP OR ERRNO=ERR_COLL_STOP THEN
+            ! Asynchronous error handling. Raise the error to the user without ending instruction
+            RaiseToUser\Continue;
+        ELSE
+            ! Instruction detects the error, instruction is ended
+            RAISE ;
+        ENDIF
+
     ENDPROC
 
     !**********************************************************
@@ -455,33 +453,33 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
     PROC MoveSync(
-		\switch J | switch L,
+		\switch J|switch L,
         robtarget ToPoint
         \speeddata Speed
         \zonedata Zone
 		\tooldata Tool)
-        
-		IF Present(J) THEN
-            Move_internal \J, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool \Sync;
+
+        IF Present(J) THEN
+            Move_internal\J,ToPoint\Speed?Speed\Zone?Zone\Tool?Tool\Sync;
         ELSEIF Present(L) THEN
-            Move_internal \L, ToPoint \Speed?Speed \Zone?Zone \Tool?Tool \Sync;
-		ELSE
-			Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool \Sync;
-        ENDIF   
+            Move_internal\L,ToPoint\Speed?Speed\Zone?Zone\Tool?Tool\Sync;
+        ELSE
+            Move_internal ToPoint\Speed?Speed\Zone?Zone\Tool?Tool\Sync;
+        ENDIF
 
     BACKWARD
         ! TBD - 
         TPWrite "MoveSync BACKWARD, WaitSyncTask not possible";
-        Move_internal ToPoint \Speed?Speed \Zone?Zone \Tool?Tool;
+        Move_internal ToPoint\Speed?Speed\Zone?Zone\Tool?Tool;
 
-        ERROR
-            IF ERRNO = ERR_PATH_STOP OR ERRNO = ERR_COLL_STOP THEN
-               ! Asynchronous error handling. Raise the error to the user without ending instruction
-                RaiseToUser \Continue;
-            ELSE
-               ! Instruction detects the error, instruction is ended
-               RAISE;
-            ENDIF
+    ERROR
+        IF ERRNO=ERR_PATH_STOP OR ERRNO=ERR_COLL_STOP THEN
+            ! Asynchronous error handling. Raise the error to the user without ending instruction
+            RaiseToUser\Continue;
+        ELSE
+            ! Instruction detects the error, instruction is ended
+            RAISE ;
+        ENDIF
 
     ENDPROC
 
@@ -510,19 +508,19 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-16   1.0        YuMi App             created   *
     !**********************************************************
-    LOCAL PROC Move_internal (
-		\switch J | switch L,
+    LOCAL PROC Move_internal(
+		\switch J|switch L,
 		robtarget ToPoint
         \speeddata Speed
         \zonedata Zone
 		\tooldata Tool
         \switch Sync)
-        
+
         VAR robtarget move_robt_local;
         VAR robtarget pCurrentPosition;
-		VAR Pose pDiff;
-		VAR num linDist;
-		VAR num angDist;
+        VAR Pose pDiff;
+        VAR num linDist;
+        VAR num angDist;
 
         move_robt_local:=ToPoint;
         ! Set Zone to use
@@ -533,7 +531,7 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
         ENDIF
         ! Limit the reorientation velocity of the TCP expressed in degrees/s. 
         YuMi_App_move_speed_local.v_ori:=100;
-        
+
         ! Set Zone to use
         IF Present(Sync) THEN
             YuMi_App_move_zone_local:=Fine;
@@ -545,49 +543,36 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
             ENDIF
         ENDIF
         IF Present(Tool) THEN
-            YuMi_App_move_tool_local := Tool;
+            YuMi_App_move_tool_local:=Tool;
         ELSE
             YuMi_App_move_tool_local:=CurrGripper;
         ENDIF
-		SingArea \Wrist;
+        SingArea\Wrist;
         !IF GetTaskName() = "T_ROB_R" THEN
-		!	MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-			!MoveL CalcRobT(move_robt_local,YuMi_App_move_tool_local), YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-            !MoveAbsJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local, YuMi_App_move_tool_local;
+        !	MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        !MoveL CalcRobT(move_robt_local,YuMi_App_move_tool_local), YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        !MoveAbsJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local, YuMi_App_move_tool_local;
         !ELSEIF GetTaskName() = "T_ROB_L" THEN
-		!	MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-			!MoveL CalcRobT(move_robt_local,YuMi_App_move_tool_local), YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-            !MoveAbsJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local, YuMi_App_move_tool_local;
+        !	MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        !MoveL CalcRobT(move_robt_local,YuMi_App_move_tool_local), YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        !MoveAbsJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local, YuMi_App_move_tool_local;
         !ELSE
         !    ErrWrite "Move ERROR", "Wrong taskname on task." \RL2:="Taskname: "+GetTaskName() \RL3:="Change taskname in configuration.";
         !    SystemStopAction \StopBlock;
         !ENDIF
-		IF Present(L) THEN
-            MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        IF Present(L) THEN
+            MoveL move_robt_local,YuMi_App_move_speed_local,YuMi_App_move_zone_local,YuMi_App_move_tool_local;
         ELSEIF Present(J) THEN
-			MoveJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-		ELSE
-			pCurrentPosition:=CRobT(\Tool:=YuMi_App_move_tool_local);        
-			pDiff:=PoseMult(PoseInv([pCurrentPosition.trans,pCurrentPosition.rot]),[move_robt_local.trans,move_robt_local.rot]);
-			linDist:=VectMagn(pDiff.trans);
-			angDist:=2*acos(abs(pDiff.rot.q1));
-			IF linDist>150 OR angDist > 20 THEN
-				MoveJ move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-			ELSE
-				MoveL move_robt_local, YuMi_App_move_speed_local, YuMi_App_move_zone_local,YuMi_App_move_tool_local;
-			ENDIF
-		ENDIF
-         IF Present(Sync) THEN
-            WaitSyncTask YuMi_App_sync1, YuMi_App_task_list;
-        ENDIF
-        
-        ERROR
-            IF ERRNO = ERR_PATH_STOP OR ERRNO = ERR_COLL_STOP THEN
-               ! Asynchronous error handling. Raise the error to the user without ending instruction
-                RaiseToUser \Continue;
+            MoveJ move_robt_local,YuMi_App_move_speed_local,YuMi_App_move_zone_local,YuMi_App_move_tool_local;
+        ELSE
+            pCurrentPosition:=CRobT(\Tool:=YuMi_App_move_tool_local);
+            pDiff:=PoseMult(PoseInv([pCurrentPosition.trans,pCurrentPosition.rot]),[move_robt_local.trans,move_robt_local.rot]);
+            linDist:=VectMagn(pDiff.trans);
+            angDist:=2*acos(abs(pDiff.rot.q1));
+            IF linDist>150 OR angDist>20 THEN
+                MoveJ move_robt_local,YuMi_App_move_speed_local,YuMi_App_move_zone_local,YuMi_App_move_tool_local;
             ELSE
-               ! Instruction detects the error, instruction is ended
-               RAISE;
+                MoveL move_robt_local,YuMi_App_move_speed_local,YuMi_App_move_zone_local,YuMi_App_move_tool_local;
             ENDIF
         ENDIF
         IF Present(Sync) THEN
@@ -605,7 +590,8 @@ MODULE MiscMove(SYSMODULE,NOVIEW)
 
     ENDPROC
 
-    
+
+
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: GotoHome                                 *
