@@ -14,16 +14,18 @@ MODULE MainModule
     ! The general speed used during calibration
     CONST speeddata vSpeed := v200;
     VAR cameradev cameraToUse;
-    VAR intnum err_int;
-        
+    
+    !PERS num transform{3,3} := [[0.00723867,-0.0786696,0.0164772],   [-0.00277539,0.00338421,1.86149],   [-0.0785732,-0.00727967,-0.0161841]];
+    !PERS num transform{3,3} := [[0.00722126,-0.0787567,0.0167684],   [-0.00346829,0.000816222,1.85072],   [-0.0785935,-0.00720426,-0.0158495]];
+    !PERS num transform{3,3} := [[0.00723406,-0.0786497,0.0141874],   [-0.00598537,0.00274677,1.86199],   [-0.0785122,-0.0072436,-0.0168165]];
+    !PERS num transform{3,3} := [[0.00729401,-0.0787129,0.0173469],   [0.0009239,0.0021448,1.8942],   [-0.0787221,-0.00722021,-0.0166163]];
+    PERS num transform{3,3} := [[0.0144255,-0.15707,0.0304456],   [0.00192358,0.00524922,3.73649],   [-0.157166,-0.0143517,-0.0445262]];
+    
+    
     PROC main()
         VAR num sak;
-        CONNECT err_int WITH err_trap;
-        IError COMMON_ERR, TYPE_ALL, err_int;
         
-        MotionSup \Off;
-
-
+        
         ! Moves to a initial position with correct configuration. 
         MoveAbsJ [[80,-75,10,45,120,130],[-80,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
         
@@ -32,12 +34,8 @@ MODULE MainModule
         setUpCameraDevice; 
         calibIntrinsicAndRotation;
         Stop;
+        
 	ENDPROC
-    
-    TRAP err_trap
-        TPWrite "Buuuuu!";
-        !Stop;
-    ENDTRAP
     
     
     LOCAL PROC setupCameraDevice()
@@ -76,25 +74,37 @@ MODULE MainModule
     ! Note: All of them needs to have the same orientation!
     LOCAL PROC getSpreadPosesInView(num nNumPoses, INOUT pose pePoses{*})
         VAR num nTransform{3,3};
-
+        VAR num nCoords{3}; 
+        VAR bool bDummy;
+        VAR robtarget pStart;
+        VAR pos psRelPos;
+        VAR pixel markerInfo;
+        
+        pStart := CRobT(\Tool:=tool0,\WObj:=wobj0);
         calculateMovementTransform nTransform;
         
         printMatrix nTransform;
         
-    ENDPROC
-    
-    LOCAL PROC printMatrix(num matrix{*,*})
-        VAR string stRow;
-        FOR r FROM 1 TO DIM(matrix,1) DO
-            stRow:="[";
-            FOR c FROM 1 TO DIM(matrix,2) DO
-                stRow := stRow + NumToStr(matrix{r,c},3);
-                IF c+1 <> DIM(matrix,2) THEN
-                    stRow := stRow + " ";
-                ENDIF
-            ENDFOR
-            TPWrite stRow;
-        ENDFOR
+        invert3x3Matrix nTransform, transform;
+        
+        ! Relative image coords from the original coord
+        ! [30,30,0]
+        markerInfo := getMarkerInfoAtPos(pStart, [0,0,0]);
+        !markerInfo.u := markerInfo.u + 100;
+        !markerInfo.v := markerInfo.v + 100;
+        
+        
+        !printMatrix transform;
+        MatrixMultiply2 transform, [100,0,0], nCoords;
+        psRelPos.x := nCoords{1};
+        psRelPos.y := nCoords{2};
+        psRelPos.z := nCoords{3};
+        TPWrite "RelPos: "\Pos:=psRelPos;
+        
+        markerInfo := getMarkerInfoAtPos(pStart, psRelPos);
+        
+        
+        
     ENDPROC
     
     
@@ -107,11 +117,12 @@ MODULE MainModule
         ENDIF
         
         ! Moves in X direction of robot-frame and get moved distance in X and pixels. 
-        getMaxVisibleDistance DIRECTION_X, nDistances{1}, nPixelDistances{1};
+        getMarkerData DIRECTION_X, nDistances{1}, nPixelDistances{1};
         ! Moves in Y direction of robot-frame and get moved distance in Y and pixels. 
-        getMaxVisibleDistance DIRECTION_Y, nDistances{2}, nPixelDistances{2};
+        getMarkerData DIRECTION_Y, nDistances{2}, nPixelDistances{2};
         ! Moves in Z direction of robot-frame and get moved distance in Z and pixels. 
-        getMaxVisibleDistance DIRECTION_Z, nDistances{3}, nPixelDistances{3};
+        getMarkerData DIRECTION_Z, nDistances{3}, nPixelDistances{3};
+        
         
         ! Probably possible to make this to a Matrix multiplication?
         ! But this is at least working. And pretty clear? :)
@@ -120,59 +131,110 @@ MODULE MainModule
             nTransform{2,c} := nPixelDistances{c}.v / nDistances{c};
             nTransform{3,c} := nPixelDistances{c}.scale / nDistances{c};
         ENDFOR
+        
+        !Stop;
     ENDPROC
     
+    
+    
+    
     ! Moves in the arm along the specified axis to the most negative and then most positive to find out the biggest difference in pixel distance
-    LOCAL PROC getMaxVisibleDistance(num nDirection, INOUT num traveledDistanceAlongAxis, INOUT pixel pixelDifferences)
-        VAR pos psMaxDetectedMarker;
-        VAR pos psMinDetectedMarker;
-        VAR num nMaxDistance;
-        VAR num nMinDistance;
-        VAR robtarget pStartPos;
+    LOCAL PROC getMarkerData(num nDirection, INOUT num traveledDistanceAlongAxis, INOUT pixel pixelDifferences)
+        CONST num nDistance:=50;
+        VAR pixel psMaxDetectedMarker;
+        VAR pixel psMinDetectedMarker;
+        VAR robtarget pStart;
         
-        pStartPos := CRobT(\Tool:=tool0,\WObj:=wobj0);
+        pStart := CRobT(\Tool:=tool0,\WObj:=wobj0);
         
-        ! Moves in positive direction
-        movesFurthestDistance nDirection, 1, psMaxDetectedMarker, nMaxDistance;
-        ! Moves directly back to start
-        MoveL pStartPos, vSpeed, z50, tool0, \WObj:=wobj0;        
-        ! Moves in negative direction
-        movesFurthestDistance nDirection, -1, psMinDetectedMarker, nMinDistance;
+        TEST nDirection
+            CASE DIRECTION_X:
+                psMaxDetectedMarker := getMarkerInfoAtPos(pStart,[nDistance,0,0]);
+                psMinDetectedMarker := getMarkerInfoAtPos(pStart,[-nDistance,0,0]);
+            CASE DIRECTION_Y:
+                psMaxDetectedMarker := getMarkerInfoAtPos(pStart,[0,nDistance,0]);
+                psMinDetectedMarker := getMarkerInfoAtPos(pStart,[0,-nDistance,0]);
+            CASE DIRECTION_Z:
+                psMaxDetectedMarker := getMarkerInfoAtPos(pStart,[0,0,nDistance]);
+                psMinDetectedMarker := getMarkerInfoAtPos(pStart,[0,0,-nDistance]);
+            DEFAULT: 
+                TPWrite "Illegal direction axis specified";
+                RAISE ERR_ARGVALERR;
+        ENDTEST
+
+        
+        
         ! Moves back to start
-        MoveL pStartPos, vSpeed, z50, tool0, \WObj:=wobj0;
+        MoveL pStart, vSpeed, fine, tool0, \WObj:=wobj0;
+        
         
         ! Returns the differencies 
-        traveledDistanceAlongAxis := nMaxDistance - nMinDistance;
-        
-        IF traveledDistanceAlongAxis=0 THEN
-            TPWrite "Couldn't travel along axis "\Num:=nDirection;
-            traveledDistanceAlongAxis:=0.1;
-        ENDIF
-        
-        pixelDifferences.u := psMaxDetectedMarker.x - psMinDetectedMarker.x;
-        pixelDifferences.v := psMaxDetectedMarker.y - psMinDetectedMarker.y;
-        pixelDifferences.scale := psMaxDetectedMarker.z - psMinDetectedMarker.z;
+        traveledDistanceAlongAxis := 2 * nDistance;
+        pixelDifferences.u := psMaxDetectedMarker.u - psMinDetectedMarker.u;
+        pixelDifferences.v := psMaxDetectedMarker.v - psMinDetectedMarker.v;
+        pixelDifferences.scale := psMaxDetectedMarker.scale - psMinDetectedMarker.scale;
     ERROR
         TPWrite "!!!!!!!Error in getMaxVisibleDistance";
         TRYNEXT;
     ENDPROC
     
-    ! Tries to move as long as possible in specified direction, moves until the marker is lost. 
-    LOCAL PROC movesFurthestDistance(num nDirection, num nSign, INOUT pos lastDetectedMarker, INOUT num nDistance)
+    
+    
+    FUNC pixel getMarkerInfoAtPos(robtarget pStartPos, pos psRelPos)
         VAR robtarget pTarget;
-        VAR pos markerInfo;
         VAR jointtarget jtDummy;
-        VAR num nStepLength := 100;
+        VAR bool bDummy;
+        VAR pixel markerInfo;
+        ! Moves the robot to a new target
+        pTarget := Offs(pStartPos, psRelPos.x,psRelPos.y,psRelPos.z);
+        
+        ! This is not used anywhere, just to throw error if position is not reachable. The error thrown by MoveL didn't seem catchable
+        jtDummy := CalcJointT(pTarget, tool0, \WObj:=wobj0);
+        MoveL pTarget, vSpeed, fine, tool0, \WObj:=wobj0;
+        bDummy := getMarkerInfo(markerInfo);
+        TPWrite "Found marker at: ";
+        TPWrite "U: " \Num:=markerInfo.u;
+        TPWrite "V: " \Num:=markerInfo.v;
+        TPWrite "Scale: " \Num:=markerInfo.scale;
+        
+        RETURN markerInfo;
+    ERROR
+        TPWrite "Destination not reachable";
+        RETURN markerInfo;
+    ENDFUNC
+    
+    
+    
+    ! Tries to move as long as possible in specified direction, moves until the marker is lost. 
+    ! DO NOT USE THIS FUNCTION SINCE IT IS PRONE TO GET 
+    ! Event Message 50431
+    ! Predicted Collision
+    ! Predicted a vollision bteween objects 'ROB_R_Link6' and 'ROB_L_Link6'
+    ! The robots stop immediately. 
+    !
+    ! Couldn't find a way to catch this error! 
+    LOCAL PROC movesFurthestDistance(num nDirection, num nSign, INOUT pixel lastDetectedMarker, INOUT num nDistance)
+        VAR robtarget pTarget;
+        VAR pixel markerInfo;
+        VAR jointtarget jtDummy;
+        VAR bool first := TRUE;
+        CONST num nStepLength := 100;
+        ! Maximum allowed distance to travel
+        CONST num nMaxDistance := 100;
         nDistance := 0;
         
+        
         ! Moves in specified direction until the marker is lost. 
-        WHILE getMarkerInfo(markerInfo) DO
+        WHILE first OR getMarkerInfo(markerInfo) DO
+            first := FALSE;
             lastDetectedMarker := markerInfo;
+            IF nDistance >= nMaxDistance THEN
+                RETURN;
+            ENDIF
+            
             nDistance := nDistance + nStepLength;
             ! Moves the robot to a new target
             pTarget := getMotionOffset(nStepLength, nDirection,nSign);
-            MotionSup \Off;
-
             
             ! This is not used anywhere, just to throw error if position is not reachable. The error thrown by MoveL didn't seem catchable
             jtDummy := CalcJointT(pTarget, tool0, \WObj:=wobj0);
@@ -205,12 +267,13 @@ MODULE MainModule
     
     ! Tries to find the logo, returns true if success, false otherwise. psCameraResult contains the data about the logo
     ! Fix and trix with the exposure here to get a good detection!
-    LOCAL FUNC bool getMarkerInfo(INOUT pos psCameraResult)
+    LOCAL FUNC bool getMarkerInfo(INOUT pixel psCameraResult)
         VAR num nNoOffPicture:=0;
         CONST num nMaxTries := 3;
+
+        !TPWrite "Tries to take picture";
         WHILE nNoOffPicture < nMaxTries DO
-            psCameraResult:=RequestImageAndGetResult(cameraToUse);
-            IF psCameraResult=[0,0,0] THEN
+            IF NOT RequestImage(cameraToUse, psCameraResult) THEN
                 Incr nNoOffPicture;
                 TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
             ELSE
@@ -219,5 +282,29 @@ MODULE MainModule
         ENDWHILE
         RETURN FALSE;
     ENDFUNC
+
+    FUNC bool RequestImage(VAR cameradev cameraToUse, INOUT pixel px)
+        VAR cameratarget tgt;
+        CamReqImage CameraToUse;
+        CamGetResult CameraToUse,tgt\MaxTime:=5;
+        !WaitTime 2.0;
+        px.u := tgt.cframe.trans.x;
+        px.v := tgt.cframe.trans.y;
+        px.scale := tgt.val1;
+        RETURN TRUE;
+    ERROR
+        IF ERRNO=ERR_CAM_MAXTIME THEN
+            TPWrite "Could not find the target";
+            RETURN FALSE;
+        ELSEIF ERRNO=ERR_CAM_COM_TIMEOUT THEN
+            WaitTime 2.0;
+            RETRY;
+        ENDIF
+    ENDFUNC
+
+    
     
 ENDMODULE
+
+
+
