@@ -19,7 +19,7 @@ MODULE MainModule
     !PERS num transform{3,3} := [[0.00722126,-0.0787567,0.0167684],   [-0.00346829,0.000816222,1.85072],   [-0.0785935,-0.00720426,-0.0158495]];
     !PERS num transform{3,3} := [[0.00723406,-0.0786497,0.0141874],   [-0.00598537,0.00274677,1.86199],   [-0.0785122,-0.0072436,-0.0168165]];
     !PERS num transform{3,3} := [[0.00729401,-0.0787129,0.0173469],   [0.0009239,0.0021448,1.8942],   [-0.0787221,-0.00722021,-0.0166163]];
-    PERS num transform{3,3} := [[0.0144255,-0.15707,0.0304456],   [0.00192358,0.00524922,3.73649],   [-0.157166,-0.0143517,-0.0445262]];
+    PERS num transform{3,3} := [[0.15572,0.00569224,-0.262471],   [0.00545394,-0.153893,-0.0697929],   [0.00764958,0.0148061,-3.5831]];
     
     
     PROC main()
@@ -27,7 +27,7 @@ MODULE MainModule
         
         
         ! Moves to a initial position with correct configuration. 
-        MoveAbsJ [[80,-75,10,45,120,130],[-80,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
+        MoveAbsJ [[89.1759,-35.7558,34.2117,-9.54241,101.499,171.393],[-67.4159,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
         
         !sak := 412 / 0;
         
@@ -95,7 +95,7 @@ MODULE MainModule
         
         
         !printMatrix transform;
-        MatrixMultiply2 transform, [100,0,0], nCoords;
+        MatrixMultiply2 transform, [-100,0,0], nCoords;
         psRelPos.x := nCoords{1};
         psRelPos.y := nCoords{2};
         psRelPos.z := nCoords{3};
@@ -140,7 +140,7 @@ MODULE MainModule
     
     ! Moves in the arm along the specified axis to the most negative and then most positive to find out the biggest difference in pixel distance
     LOCAL PROC getMarkerData(num nDirection, INOUT num traveledDistanceAlongAxis, INOUT pixel pixelDifferences)
-        CONST num nDistance:=50;
+        CONST num nDistance:=30;
         VAR pixel psMaxDetectedMarker;
         VAR pixel psMinDetectedMarker;
         VAR robtarget pStart;
