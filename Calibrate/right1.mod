@@ -16,7 +16,7 @@ MODULE MainModule
     LOCAL CONST speeddata vSpeed := v200;
     LOCAL VAR cameradev cameraToUse;
     
-    LOCAL PERS num transform{3,3} := [[-0.000905999,0.163839,-0.202577],   [0.0227405,-0.00622846,-3.83902],   [0.1626,0.00163294,0.320635]];
+    LOCAL PERS num transform{3,3} := [[0.141534,0.163233,-1.92653],   [0.132022,-0.150753,-3.17208],   [0.115751,-0.0289328,4.93283]];
     
     PERS robtarget pLogoTarget;
     LOCAL VAR robtarget pStart;
@@ -26,7 +26,7 @@ MODULE MainModule
         
         
         ! Moves to a initial position with correct configuration. 
-        MoveAbsJ [[74.077,-105.906,28.11,38.7805,94.3583,158.079],[-54.3312,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
+        !MoveAbsJ [[-38.8404,-126.654,76.7125,59.5511,85.1966,158.078],[-62.9017,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
         
         WaitTime 5;
         IF bMoveCamera THEN
@@ -97,7 +97,7 @@ MODULE MainModule
         
         
         !printMatrix transform;
-        MatrixMultiply2 transform, [0,0,-20], nCoords;
+        MatrixMultiply2 transform, [100,0,0], nCoords;
         psRelPos.x := nCoords{1};
         psRelPos.y := nCoords{2};
         psRelPos.z := nCoords{3};
