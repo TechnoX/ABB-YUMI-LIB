@@ -47,9 +47,10 @@ MODULE MainModule
     PERS robtarget pLogoTarget;
     LOCAL VAR robtarget pStart;
     
-    PROC main()
-        VAR num sak;
         
+    
+    PROC main()
+        VAR num sak;     
         
         ! Moves to a initial position with correct configuration. 
         MoveAbsJ [[73.7158,-90.4035,20.6941,36.0716,113.105,138.297],[-75.8492,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
@@ -137,6 +138,8 @@ MODULE MainModule
         VAR num nCoords{3}; 
         VAR pos psRelPos;
         VAR num nRelPixelTarget{3};
+        ! Max distance to be considered a true detection
+        CONST num nMaxDistance := 200; 
         
         nRelPixelTarget{1} := pxTarget.u - pxCalibOffset.u;
         nRelPixelTarget{2} := pxTarget.v - pxCalibOffset.v;
@@ -147,13 +150,23 @@ MODULE MainModule
         psRelPos.y := nCoords{2};
         psRelPos.z := nCoords{3};
         
+        ! If not detected at all
         IF NOT getMarkerInfoAtPos(pStart, psRelPos, pxDetectedMarker) THEN
+            RETURN FALSE;
+        ENDIF
+        
+        ! If detected at wrong position in the image, we are discarding this detection
+        IF getPixelDistance(pxDetectedMarker, pxTarget) > 200 THEN
             RETURN FALSE;
         ENDIF
         
         RETURN TRUE;
     ENDFUNC
     
+    
+    LOCAL FUNC num getPixelDistance(pixel px1, pixel px2)
+        RETURN Sqrt((px1.u - px2.u) * (px1.u - px2.u) + (px1.v - px2.v) * (px1.v - px2.v) + (px1.scale - px2.scale) * (px1.scale - px2.scale));
+    ENDFUNC
     
     LOCAL PROC calculateMovementTransform(INOUT num nTransform{*,*})
         VAR num nDistances{3};
