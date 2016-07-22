@@ -100,40 +100,58 @@ MODULE MainModule
         
         findP nNumPoses, pS, pxU, dnP;
 
-        QRFactorization;
+        QRFactorization dnP, peRobTCam, dnK, dnKinv;
         
     ENDPROC
     
-    LOCAL PROC QRFactorization(dnum dnP{*,*}, INOUT num K)
+    
+    ! Creates a transform from robot to camera, and the intrinsic parameters dnK
+    ! (as a side effect from the algorithm we also obtain the inverted K matrix, which can be good for future use). 
+    LOCAL PROC QRFactorization(dnum dnP{*,*}, INOUT pose robTcam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*})
         VAR bool bDummy;
         VAR num signChecks;
+        VAR num Zsign;
+        VAR pose camTrob;
+        VAR dnum dnR{3,3};
+        VAR dnum dnT{3,1};
+        VAR pos ps1;
+        VAR pos ps2;
+        VAR pos ps3;
+        VAR num d12;
+        VAR num d13;
         
-        bDummy:=PMatDecompQR(P,K,Kinv,camR,camT,1);
+        bDummy:=PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,1);
+        
+        ! Nån form av kontroll av resultatet. Lite oklart vad som sker...  Borde undersökas!
         signChecks:=0;
         WHILE signChecks<2 DO
-            p1.x:=dnumtonum(camR{1,1});
-            p1.y:=dnumtonum(camR{2,1});
-            p1.z:=dnumtonum(camR{3,1});
-            p2.x:=dnumtonum(camR{1,2});
-            p2.y:=dnumtonum(camR{2,2});
-            p2.z:=dnumtonum(camR{3,2});
-            p3.x:=dnumtonum(camR{1,3});
-            p3.y:=dnumtonum(camR{2,3});
-            p3.z:=dnumtonum(camR{3,3});
-            camTrob.rot:=vec2quat(p1,p2,p3);
-            camTrob.trans:=[dnumtonum(camT{1,1}),dnumtonum(camT{2,1}),dnumtonum(camT{3,1})];
+            ! Create rotation matrix
+            ps1.x:=dnumtonum(dnR{1,1});
+            ps1.y:=dnumtonum(dnR{2,1});
+            ps1.z:=dnumtonum(dnR{3,1});
+            ps2.x:=dnumtonum(dnR{1,2});
+            ps2.y:=dnumtonum(dnR{2,2});
+            ps2.z:=dnumtonum(dnR{3,2});
+            ps3.x:=dnumtonum(dnR{1,3});
+            ps3.y:=dnumtonum(dnR{2,3});
+            ps3.z:=dnumtonum(dnR{3,3});
+            camTrob.rot:=vec2quat(ps1,ps2,ps3);
+            ! Create translation vector
+            camTrob.trans:=[dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
 
+            
+            
             !Check if "pixel" values match x,y axis of camera wobj
-            p1:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{1,1}),dnumtonum(robPos{1,2}),dnumtonum(robPos{1,3})]);
-            p2:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{2,1}),dnumtonum(robPos{2,2}),dnumtonum(robPos{2,3})]);
-            p3:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{3,1}),dnumtonum(robPos{3,2}),dnumtonum(robPos{3,3})]);
-            p1.z:=0;
-            p2.z:=0;
-            p3.z:=0;
-            d12:=DotProd(NormalizePos(p2-p1),NormalizePos([dnumtonum(camPos{2,1}),dnumtonum(camPos{2,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
-            d13:=DotProd(NormalizePos(p3-p1),NormalizePos([dnumtonum(camPos{3,1}),dnumtonum(camPos{3,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
+            ps1:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{1,1}),dnumtonum(robPos{1,2}),dnumtonum(robPos{1,3})]);
+            ps2:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{2,1}),dnumtonum(robPos{2,2}),dnumtonum(robPos{2,3})]);
+            ps3:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{3,1}),dnumtonum(robPos{3,2}),dnumtonum(robPos{3,3})]);
+            ps1.z:=0;
+            ps2.z:=0;
+            ps3.z:=0;
+            d12:=DotProd(NormalizePos(ps2-ps1),NormalizePos([dnumtonum(camPos{2,1}),dnumtonum(camPos{2,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
+            d13:=DotProd(NormalizePos(ps3-ps1),NormalizePos([dnumtonum(camPos{3,1}),dnumtonum(camPos{3,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
             !0.05 for poorly calibrated robot, 0.01 for properly calibrated robot
-            IF Present(HandHeldCamera) THEN
+            IF bMoveCamera THEN
                 Zsign:=-1;
             ELSE
                 Zsign:=1;
@@ -141,19 +159,24 @@ MODULE MainModule
 
             IF abs(d12-Zsign)>0.05 OR abs(d13-Zsign)>0.05 THEN
                 !Axes do not match, redo pMatDecomp with reversed Z sign
-                IF signChecks=0 bDummy:=PMatDecompQR(P,K,Kinv,camR,camT,-1);
+                IF signChecks=0 bDummy:=PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,-1);
                 Incr signChecks;
             ELSE
                 !Signs are OK, break loop
                 signChecks:=10;
             ENDIF
 
+            
         ENDWHILE
         IF signChecks=2 THEN
             ErrWrite "Error in CalibIntrinsic","unable to match signs in CalibIntrinsic";
             Stop;
         ENDIF
 
+        
+        
+        robTcam:=PoseInv(camTrob);
+        
     ENDPROC
     
 
@@ -164,39 +187,44 @@ MODULE MainModule
         VAR dnum dnV{12,12};
         VAR num nMinIndexS;
         VAR dnum dnMinValueS;
-        
-        !TODO: normalize the data! 
-        normalize;
+        ! The mean values of the datasets
+        VAR pos psMeanS;
+        VAR pixel pxMeanU;
+        ! The standard deviation of the datasets
+        VAR pos psStdevS;
+        VAR pixel pxStdevU;
+
+        normalize nNumPoses;
         
         
         ! Create big matrix used for finding P using SVD, see eq. 6 in paper. 
         FOR r2 FROM 1 TO nNumPoses DO
             ! First row
-            dnMatrix{r2,1} := NumToDnum(pS{r2}.trans.x);
-            dnMatrix{r2,2} := NumToDnum(pS{r2}.trans.y);
-            dnMatrix{r2,3} := NumToDnum(pS{r2}.trans.z);
-            dnMatrix{r2,4} := 1;
-            dnMatrix{r2,5} := 0;
-            dnMatrix{r2,6} := 0;
-            dnMatrix{r2,7} := 0;
-            dnMatrix{r2,8} := 0;
-            dnMatrix{r2,9} :=  - NumToDnum(pxU{r2}.u * pS{r2}.trans.x);
-            dnMatrix{r2,10} := - NumToDnum(pxU{r2}.u * pS{r2}.trans.y);
-            dnMatrix{r2,11} := - NumToDnum(pxU{r2}.u * pS{r2}.trans.z);
-            dnMatrix{r2,12} := - NumToDnum(pxU{r2}.u);
+            dnMatrix{2*r2-1,1} := NumToDnum(pS{r2}.trans.x);
+            dnMatrix{2*r2-1,2} := NumToDnum(pS{r2}.trans.y);
+            dnMatrix{2*r2-1,3} := NumToDnum(pS{r2}.trans.z);
+            dnMatrix{2*r2-1,4} := 1;
+            dnMatrix{2*r2-1,5} := 0;
+            dnMatrix{2*r2-1,6} := 0;
+            dnMatrix{2*r2-1,7} := 0;
+            dnMatrix{2*r2-1,8} := 0;
+            dnMatrix{2*r2-1,9} :=  - NumToDnum(pxU{r2}.u * pS{r2}.trans.x);
+            dnMatrix{2*r2-1,10} := - NumToDnum(pxU{r2}.u * pS{r2}.trans.y);
+            dnMatrix{2*r2-1,11} := - NumToDnum(pxU{r2}.u * pS{r2}.trans.z);
+            dnMatrix{2*r2-1,12} := - NumToDnum(pxU{r2}.u);
             ! Second row
-            dnMatrix{r2+1,1} := 0;
-            dnMatrix{r2+1,2} := 0;
-            dnMatrix{r2+1,3} := 0;
-            dnMatrix{r2+1,4} := 0;
-            dnMatrix{r2+1,5} := NumToDnum(pS{r2}.trans.x);
-            dnMatrix{r2+1,6} := NumToDnum(pS{r2}.trans.y);
-            dnMatrix{r2+1,7} := NumToDnum(pS{r2}.trans.z);
-            dnMatrix{r2+1,8} := 1;
-            dnMatrix{r2+1,9} :=  - NumToDnum(pxU{r2}.v * pS{r2}.trans.x);
-            dnMatrix{r2+1,10} := - NumToDnum(pxU{r2}.v * pS{r2}.trans.y);
-            dnMatrix{r2+1,11} := - NumToDnum(pxU{r2}.v * pS{r2}.trans.z);
-            dnMatrix{r2+1,12} := - NumToDnum(pxU{r2}.v);
+            dnMatrix{2*r2,1} := 0;
+            dnMatrix{2*r2,2} := 0;
+            dnMatrix{2*r2,3} := 0;
+            dnMatrix{2*r2,4} := 0;
+            dnMatrix{2*r2,5} := NumToDnum(pS{r2}.trans.x);
+            dnMatrix{2*r2,6} := NumToDnum(pS{r2}.trans.y);
+            dnMatrix{2*r2,7} := NumToDnum(pS{r2}.trans.z);
+            dnMatrix{2*r2,8} := 1;
+            dnMatrix{2*r2,9} :=  - NumToDnum(pxU{r2}.v * pS{r2}.trans.x);
+            dnMatrix{2*r2,10} := - NumToDnum(pxU{r2}.v * pS{r2}.trans.y);
+            dnMatrix{2*r2,11} := - NumToDnum(pxU{r2}.v * pS{r2}.trans.z);
+            dnMatrix{2*r2,12} := - NumToDnum(pxU{r2}.v);
         ENDFOR
         
         
@@ -206,7 +234,6 @@ MODULE MainModule
         !Find smallest singular value
         dnMinValueS := MinDnumArray(dnS, \idx:=nMinIndexS);
 
-        
         
         dnP:=[[dnV{1,nMinIndexS}, dnV{2,nMinIndexS},  dnV{3,nMinIndexS},  dnV{4,nMinIndexS}],
               [dnV{5,nMinIndexS}, dnV{6,nMinIndexS},  dnV{7,nMinIndexS},  dnV{8,nMinIndexS}],
@@ -218,51 +245,99 @@ MODULE MainModule
         
     ENDPROC
     
-    LOCAL PROC denormalize()
-!        Scale_robPos:=[[1/srobPos{1},0,0,-trobPos{1}/srobPos{1}],[0,1/srobPos{2},0,-trobPos{2}/srobPos{2}],[0,0,1/srobPos{3},-trobPos{3}/srobPos{3}],[0,0,0,1]];
-!        Scale_camPos:=[[1/scamPos{1},0,-tcamPos{1}/scamPos{1}],[0,1/scamPos{2},-tcamPos{2}/scamPos{2}],[0,0,1]];
-!        MatrixMultiplyDnum P,Scale_robPos,result4;
-!        status:=invert3DMatrix(Scale_camPos,result3);
-!        MatrixMultiplyDnum result3,result4,P;
-!        abs_lambda:=SqrtDnum(P{3,1}*P{3,1}+P{3,2}*P{3,2}+P{3,3}*P{3,3});
-!        !Scale P with the scale factor
-!        FOR i FROM 1 TO 3 DO
-!            FOR j FROM 1 TO 4 DO
-!                P{i,j}:=P{i,j}/abs_lambda;
-!            ENDFOR
-!        ENDFOR
+    LOCAL PROC denormalize(pos psMean, pos psStdev, pixel pxMean, pixel pxStdev, INOUT dnum dnP{*,*})
+        VAR num Scale_robPos{4,4};
+        VAR num Scale_camPos{3,3};
+        VAR dnum result3{3,3};
+        VAR dnum result4{4,4};
+        VAR bool bDummy;
+        VAR dnum abs_lambda;
+                
+        Scale_robPos:=[[1/psStdev.x,0,0,-psMean.x/psStdev.x],
+                       [0,1/psStdev.y,0,-psMean.y/psStdev.y],
+                       [0,0,1/psStdev.z,-psMean.z/psStdev.z],
+                       [0,0,0,1]];
+                       
+        Scale_camPos:=[[1/pxStdev.u,0,-pxMean.u/pxStdev.u],
+                       [0,1/pxStdev.v,-pxMean.v/pxStdev.v],
+                       [0,0,1]];
+
+        MatrixMultiplyDnum dnP,Scale_robPos,result4;
+        bDummy:=invert3DMatrix(Scale_camPos,result3);
+        MatrixMultiplyDnum result3,result4,dnP;
+        abs_lambda:=SqrtDnum(dnP{3,1}*dnP{3,1}+dnP{3,2}*dnP{3,2}+dnP{3,3}*dnP{3,3});
+        !Scale P with the scale factor
+        FOR i FROM 1 TO 3 DO
+            FOR j FROM 1 TO 4 DO
+                dnP{i,j}:=dnP{i,j}/abs_lambda;
+            ENDFOR
+        ENDFOR
     ENDPROC
     
-    LOCAL PROC normalize()
+    LOCAL PROC normalize(num nNumPoses, pos psMeanS, pos psStdevS, pixel pxMeanU, pixel pxStdevU, INOUT robtarget pS{*}, INOUT pixel pxU{*})
         !Calculate normalization scaling
-!        FOR i FROM 1 TO n DO
-!            trobPos{1}:=trobPos{1}+robPos{i,1}/numtodnum(n);
-!            trobPos{2}:=trobPos{2}+robPos{i,2}/numtodnum(n);
-!            trobPos{3}:=trobPos{3}+robPos{i,3}/numtodnum(n);
-!            tcamPos{1}:=tcamPos{1}+camPos{i,1}/numtodnum(n);
-!            tcamPos{2}:=tcamPos{2}+camPos{i,2}/numtodnum(n);
-!        ENDFOR
-!        FOR i FROM 1 TO n DO
-!            srobPos{1}:=srobPos{1}+(robPos{i,1}-trobPos{1})*(robPos{i,1}-trobPos{1})/numtodnum(n-1);
-!            srobPos{2}:=srobPos{2}+(robPos{i,2}-trobPos{2})*(robPos{i,2}-trobPos{2})/numtodnum(n-1);
-!            srobPos{3}:=srobPos{3}+(robPos{i,3}-trobPos{3})*(robPos{i,3}-trobPos{3})/numtodnum(n-1);
-!            scamPos{1}:=scamPos{1}+(camPos{i,1}-tcamPos{1})*(camPos{i,1}-tcamPos{1})/numtodnum(n-1);
-!            scamPos{2}:=scamPos{2}+(camPos{i,2}-tcamPos{2})*(camPos{i,2}-tcamPos{2})/numtodnum(n-1);
-!        ENDFOR
-!        srobPos{1}:=SqrtDnum(srobPos{1});
-!        srobPos{2}:=SqrtDnum(srobPos{2});
-!        srobPos{3}:=SqrtDnum(srobPos{3});
-!        scamPos{1}:=SqrtDnum(scamPos{1});
-!        scamPos{2}:=SqrtDnum(scamPos{2});
-!        FOR i FROM 1 TO n DO
-!            robPos{i,1}:=(robPos{i,1}-trobPos{1})/srobPos{1};
-!            robPos{i,2}:=(robPos{i,2}-trobPos{2})/srobPos{2};
-!            robPos{i,3}:=(robPos{i,3}-trobPos{3})/srobPos{3};
-!            camPos{i,1}:=(camPos{i,1}-tcamPos{1})/scamPos{1};
-!            camPos{i,2}:=(camPos{i,2}-tcamPos{2})/scamPos{2};
-!        ENDFOR
+        FOR i FROM 1 TO nNumPoses DO
+            pS{i}.trans.x:=(pS{i}.trans.x-psMeanS.x)/psStdevS.x;
+            pS{i}.trans.y:=(pS{i}.trans.y-psMeanS.y)/psStdevS.y;
+            pS{i}.trans.z:=(pS{i}.trans.z-psMeanS.z)/psStdevS.z;
+            pxU{i}.u:=(pxU{i}.u-pxMeanU.u)/pxStdevU.u;
+            pxU{i}.v:=(pxU{i}.v-pxMeanU.v)/pxStdevU.v;
+        ENDFOR
     ENDPROC
     
+    LOCAL FUNC pos getPosMean(pos ps{*})
+        VAR pos psMean;
+        VAR num nLength := Dim(ps,1);
+        FOR i FROM 1 TO nLength DO
+            psMean.x:=psMean.x + ps{i}.x/nLength;
+            psMean.y:=psMean.y + ps{i}.y/nLength;
+            psMean.z:=psMean.z + ps{i}.z/nLength;
+        ENDFOR
+        RETURN psMean;
+    ENDFUNC
+    
+    LOCAL FUNC pos getPosStdev(pos ps{*}, \pos psMean)
+        VAR pos psStdev;
+        VAR num nLength := Dim(ps,1);
+        IF NOT Present(psMean) THEN
+            psMean := getPosMean(ps);
+        ENDIF
+        FOR i FROM 1 TO nLength DO
+            psStdev.x:=psStdev.x+(ps{i}.x-psMean.x)*(ps{i}.x-psMean.x)/(nLength-1);
+            psStdev.y:=psStdev.y+(ps{i}.y-psMean.y)*(ps{i}.x-psMean.y)/(nLength-1);
+            psStdev.z:=psStdev.z+(ps{i}.z-psMean.z)*(ps{i}.x-psMean.z)/(nLength-1);
+        ENDFOR
+        psStdev.x:=Sqrt(psStdev.x);
+        psStdev.y:=Sqrt(psStdev.y);
+        psStdev.z:=Sqrt(psStdev.z);
+        
+        RETURN psStdev;
+    ENDFUNC
+    
+    LOCAL FUNC pixel getPixelMean(pixel px{*})
+        VAR pixel pxMean;
+        VAR num nLength := Dim(px,1);
+        FOR i FROM 1 TO nLength DO
+            pxMean.u:=pxMean.u + px{i}.u/nLength;
+            pxMean.v:=pxMean.v + px{i}.v/nLength;
+        ENDFOR
+        RETURN pxMean;
+    ENDFUNC
+    
+    LOCAL FUNC pixel getPixelStdev(pixel px{*}, \pixel pxMean)
+        VAR pixel pxStdev;
+        VAR num nLength := Dim(px,1);
+        IF NOT Present(pxMean) THEN
+            pxMean := getPixelMean(px);
+        ENDIF
+        FOR i FROM 1 TO nLength DO
+            pxStdev.u:=pxStdev.u+(px{i}.u-pxMean.u)*(px{i}.u-pxMean.u)/(nLength-1);
+            pxStdev.v:=pxStdev.v+(px{i}.v-pxMean.v)*(px{i}.v-pxMean.v)/(nLength-1);
+        ENDFOR
+        pxStdev.u:=Sqrt(pxStdev.u);
+        pxStdev.v:=Sqrt(pxStdev.v);
+        RETURN pxStdev;
+    ENDFUNC
     
     
     ! Get the S and U datasets. 
