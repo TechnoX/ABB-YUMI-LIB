@@ -23,6 +23,11 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
 
+    RECORD polar
+        num radius;
+        num theta;
+        num phi;
+    ENDRECORD
 
 
 
@@ -213,7 +218,19 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDFOR
         RETURN min;
     ENDFUNC
-
+    
+    FUNC dnum MinDnumArray(dnum a{*}, \INOUT num idx)
+        VAR dnum min;
+        min:=a{1};
+        FOR i FROM 2 TO Dim(a,1) DO
+            IF a{i}<min THEN
+                min:=a{i};
+                idx:=i;
+            ENDIF
+        ENDFOR
+        RETURN min;
+    ENDFUNC
+    
 
     !**********************************************************
     !*                                                        *
@@ -738,18 +755,34 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !**********************************************************
     PROC MatrixMultiply(num A{*,*},num B{*,*},VAR num res{*,*})
         VAR num sum;
-
-        FOR i FROM 1 TO Dim(A,1) DO
-            FOR j FROM 1 TO Dim(B,2) DO
+        ! TODO: Add dimension check of input arguments! 
+        FOR r FROM 1 TO Dim(A,1) DO
+            FOR cb FROM 1 TO Dim(B,2) DO
                 sum:=0;
-                FOR n FROM 1 TO Dim(A,2) DO
-                    sum:=sum+A{i,n}*B{n,j};
+                FOR ca FROM 1 TO Dim(A,2) DO
+                    sum:=sum+A{r,ca}*B{ca,cb};
                 ENDFOR
-                res{i,j}:=sum;
+                res{r,cb}:=sum;
             ENDFOR
         ENDFOR
     ENDPROC
-
+    
+    PROC MatrixMultiply2(num A{*,*},num B{*},VAR num res{*})
+        VAR num sum;
+        IF DIM(A,1) <> DIM(res,1) OR DIM(A,2) <> DIM(B,1) THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        FOR r FROM 1 TO Dim(A,1) DO
+            sum:=0;
+            FOR c FROM 1 TO Dim(A,2) DO
+                sum:=sum+A{r,c}*B{c};
+            ENDFOR
+            res{r}:=sum;
+        ENDFOR
+    ENDPROC
+    
+    
+ 
 
     !**********************************************************
     !*                                                        *
@@ -838,9 +871,9 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !*                                                        *
     !**********************************************************
     !*                                                        *
-    !* DESCRIPTION:  Invert a 2D matrix                       *
+    !* DESCRIPTION:  Invert a 2x2 matrix                       *
     !*                                                        *
-    !* IN:           A: The 2D matrix                         *
+    !* IN:           A: The 2x2 matrix                         *
     !*                                                        *
     !* INOUT:        invA: The inverted matrix                *
     !*                                                        *
@@ -863,9 +896,9 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !*                                                        *
     !**********************************************************
     !*                                                        *
-    !* DESCRIPTION:  Invert a 3D dnum matrix                  *
+    !* DESCRIPTION:  Invert a 3x3 dnum matrix                  *
     !*                                                        *
-    !* IN:           M: The 3D matrix                         *
+    !* IN:           M: The 3x3 matrix                         *
     !*                                                        *
     !* INOUT:        res: The inverted matrix                 *
     !*                                                        *
@@ -874,7 +907,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
     !**********************************************************
-    FUNC bool invert3DMatrix(dnum M{*,*},VAR dnum res{*,*})
+    FUNC bool invert3DMatrix(dnum M{*,*}, INOUT dnum res{*,*})
         VAR dnum det;
         VAR dnum a;
         VAR dnum b;
@@ -885,6 +918,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         VAR dnum g;
         VAR dnum h;
         VAR dnum k;
+        
         a:=M{1,1};
         b:=M{1,2};
         c:=M{1,3};
@@ -902,6 +936,57 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     ENDFUNC
 
 
+    PROC invert3x3Matrix(num M{*,*},INOUT num res{*,*})
+        VAR dnum dnM{3,3};
+        VAR dnum dnRes{3,3};
+        VAR bool bDummy;
+        
+        FOR r FROM 1 TO 3 DO
+            FOR c FROM 1 TO 3 DO
+                dnM{r,c} := NumToDnum(M{r,c});
+            ENDFOR
+        ENDFOR
+        
+        bDummy:=invert3DMatrix(dnM,dnRes);
+        
+        FOR r FROM 1 TO 3 DO
+            FOR c FROM 1 TO 3 DO
+                res{r,c} := DnumToNum(dnRes{r,c});
+            ENDFOR
+        ENDFOR
+    ENDPROC
+
+    
+    PROC printMatrix(num matrix{*,*})
+        VAR string stRow;
+        FOR r FROM 1 TO DIM(matrix,1) DO
+            stRow:="[";
+            FOR c FROM 1 TO DIM(matrix,2) DO
+                stRow := stRow + NumToStr(matrix{r,c},3);
+                IF c <> DIM(matrix,2) THEN
+                    stRow := stRow + ", ";
+                ENDIF
+            ENDFOR
+            stRow := stRow+"]";
+            TPWrite stRow;
+        ENDFOR
+    ENDPROC
+    
+    PROC printdNumMatrix(dnum matrix{*,*})
+        VAR string stRow;
+        FOR r FROM 1 TO DIM(matrix,1) DO
+            stRow:="[";
+            FOR c FROM 1 TO DIM(matrix,2) DO
+                stRow := stRow + dNumToStr(matrix{r,c},3);
+                IF c <> DIM(matrix,2) THEN
+                    stRow := stRow + ", ";
+                ENDIF
+            ENDFOR
+            stRow := stRow+"]";
+            TPWrite stRow;
+        ENDFOR
+    ENDPROC
+    
 
     !**********************************************************
     !*                                                        *
@@ -1168,5 +1253,25 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDIF
     ENDFUNC
 
-
+    FUNC num norm(pos psPos)
+        RETURN sqrt(psPos.x * psPos.x + psPos.y * psPos.y + psPos.z * psPos.z);
+    ENDFUNC
+    
+    FUNC polar pos2polar(pos psPos)
+        VAR polar poPolar;
+        poPolar.radius := norm(psPos);
+        IF poPolar.radius < 1e-9 THEN
+            RETURN [0,0,poPolar.radius];
+        ENDIF
+        poPolar.theta := acos(psPos.z / poPolar.radius);
+        IF psPos.x = 0 THEN
+            poPolar.phi := 0;
+        ELSE
+            poPolar.phi := atan2(psPos.y, psPos.x);
+        ENDIF
+        RETURN poPolar;
+    ENDFUNC
+    
+    
+    
 ENDMODULE
