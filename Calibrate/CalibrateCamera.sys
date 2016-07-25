@@ -6,7 +6,7 @@
 MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !**********************************************************
     !*                                                        *
-    !* Module name: MathCamera                                *
+    !* Module name: CalibrateCamera                           *
     !*                                                        *
     !**********************************************************
     !*                                                        *
@@ -83,11 +83,11 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         ENDIF
 
         SingArea\Wrist;
-        MoveJ robTargets{1},v200,fine,tool_YuMiGripper_S_C;
-        MoveL robTargets{2},v200,fine,tool_YuMiGripper_S_C;
-        MoveL robTargets{3},v200,fine,tool_YuMiGripper_S_C;
-        MoveL robTargets{4},v200,fine,tool_YuMiGripper_S_C;
-        MoveL robTargets{5},v200,fine,tool_YuMiGripper_S_C;
+        MoveJ pCamera_Calib_1,v200,fine,tool_YuMiGripper_S_C;
+        MoveL pCamera_Calib_2,v200,fine,tool_YuMiGripper_S_C;
+        MoveL pCamera_Calib_3,v200,fine,tool_YuMiGripper_S_C;
+        MoveL pCamera_Calib_4,v200,fine,tool_YuMiGripper_S_C;
+        MoveL pCamera_Calib_5,v200,fine,tool_YuMiGripper_S_C;
     ENDPROC
 
 
@@ -130,7 +130,7 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !*               R: the rotation matrix                   *
     !*               t: the translation                       *
     !*                                                        *
-    !* RETURN:       bool: Don't know                         *
+    !* RETURN:       bool: True on success, otherwise false   *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
     !* 2016-07-15   1.0        Ivan Lundberg        created   *
@@ -1420,9 +1420,6 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
         ENDIF
     ENDPROC
 
-    ! NOTE!!!! This is now splitted in two files, here and in MathCamera as well... 
-    !TASK PERS num Calibrated:=1;
-
     !**********************************************************
     !*                                                        *
     !* ROUTINE NAME: RequestImageAndGetResult                 *
@@ -1442,6 +1439,7 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !**********************************************************
     FUNC pos RequestImageAndGetResult(VAR CameraDev CameraToUse)
         VAR cameratarget tgt;
+        ! TODO: Why are you calling function as string?? 
         %"CamReqImage"%CameraToUse;
         %"CamGetResult"%CameraToUse,tgt\MaxTime:=5;
         WaitTime 2.0;
