@@ -50,22 +50,25 @@ MODULE MainModule
         
     
     PROC main()
-        VAR num sak;     
+        VAR pose peRobTCam;
+        VAR dnum dnK{3,3};
+        VAR dnum dnKinv{3,3};
         
         ! Moves to a initial position with correct configuration. 
         MoveAbsJ [[73.7158,-90.4035,20.6941,36.0716,113.105,138.297],[-75.8492,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
         
         WaitTime 1;
         ! TOOD: Use WaitSyncTask to be sure the other arm is standing still after its MoveAbsJ instruction
-        pStart := getCurrentPosition();
+        pStart := getCurrentRobtarget();
         setUpCameraDevice; 
-        calibIntrinsicAndRotation;
+        calibIntrinsicAndRotation peRobTCam, dnK, dnKinv;
+
         Stop \AllMoveTasks;
         
 	ENDPROC
     
     
-    LOCAL FUNC robtarget getCurrentPosition()
+    LOCAL FUNC robtarget getCurrentRobtarget()
         IF bMoveCamera THEN
             RETURN CRobT(\Tool:=tool0,\WObj:=wobj0);
         ELSE
@@ -84,103 +87,138 @@ MODULE MainModule
         InitCamera cameraToUse,markerFinderJob;
     ENDPROC
     
-    ! Whole phase A of the paper. 
-    LOCAL PROC calibIntrinsicAndRotation()
-        ! The m value in the paper
+    ! Whole phase one of the paper.
+    LOCAL PROC calibIntrinsicAndRotation(INOUT pose peRob2Cam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*})
+        ! The number of detected markers, the m value in the paper
         VAR num nNumPoses;
-        VAR robtarget pS{nMaxPoints};
+        ! The first S dataset, from paper
+        VAR pos psS{nMaxPoints};
+        ! The first U dataset, from paper
         VAR pixel pxU{nMaxPoints};
+        ! The pixel where the first marker was detected (during precalibration)
         VAR pixel pxCalibOffset;
+        ! The precalibration transform, used to place the logo at specific coordinates in the image
         VAR num nTransform{3,3};
+        ! The P matrix, from paper
         VAR dnum dnP{3,4};
+        ! The rotation matrix
+        VAR dnum dnR{3,3};
+        ! The translation matrix, not correct values since it is calculated from the wrist
+        VAR dnum dnT{3,1};
+        ! The transformation from camera frame to(2) robot frame
+        VAR pose peCam2Rob;
         
+        ! Check dimensions of input arguments
+        IF DIM(dnK,1) <> 3 OR DIM(dnK,2) <> 3 OR DIM(dnKinv,1) <> 3 OR DIM(dnKinv,2) <> 3 THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        
+        ! Find an initial transformation from pixel coordinates to world coordinates
         preCalibration nTransform, pxCalibOffset;
 
-        getSAndU pxCalibOffset, nTransform, nNumPoses, pS, pxU;
+        ! Get measurements of pixels (U dataset) and their correspondences in real world (S dataset)
+        getSAndU pxCalibOffset, nTransform, nNumPoses, psS, pxU;
         
-        findP nNumPoses, pS, pxU, dnP;
+        ! Create a P (transformation matrix) from the S and U datasets
+        findP nNumPoses, psS, pxU, dnP;
 
-        QRFactorization dnP, peRobTCam, dnK, dnKinv;
+        ! Creates a transform from robot to camera, and the intrinsic parameters dnK
+        ! (as a side effect from the algorithm we also obtain the inverted K matrix, which can be good for future use). 
+        IF NOT PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,1) THEN 
+            ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
+            Stop;
+        ENDIF
+        createPoseFromRAndT dnR, dnT, peCam2Rob;
         
+        ! If the axis was wrong, change direction of Z-axis
+        IF NOT axesCoincide(peCam2rob, psS, pxU) THEN
+            IF NOT PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,-1) THEN 
+                ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
+                Stop;
+            ENDIF
+            createPoseFromRAndT dnR, dnT, peCam2Rob;
+            
+            ! If they still don't coincide, something is broken! 
+            IF NOT axesCoincide(peCam2rob, psS, pxU) THEN
+                ErrWrite "calibIntrinsicAndRotation","Unable to match sign of axes";
+                Stop;
+            ENDIF
+        ENDIF
+
+        ! TODO: Analyze dnP before PMatDecompQR beforehand to select positive or negative sign?? So we don't need to check if the axes coincide. 
+        
+        
+        ! Return the inverse transform, from robot base to camera coordinate system
+        peRob2Cam:=PoseInv(peCam2Rob);
+        ! Note that only the R part of peRobTCam is correct so far! 
+        
+        
+        ! Returns and peRobTCam and K (and Kinv) values. Done with phase one.  
     ENDPROC
     
     
-    ! Creates a transform from robot to camera, and the intrinsic parameters dnK
-    ! (as a side effect from the algorithm we also obtain the inverted K matrix, which can be good for future use). 
-    LOCAL PROC QRFactorization(dnum dnP{*,*}, INOUT pose robTcam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*})
-        VAR bool bDummy;
-        VAR num signChecks;
+    LOCAL FUNC bool axesCoincide(pose peCam2Rob, pos psS{*}, pixel pxU{*})
+        VAR num d12;
+        VAR num d13;
         VAR num Zsign;
-        VAR pose camTrob;
-        VAR dnum dnR{3,3};
-        VAR dnum dnT{3,1};
         VAR pos ps1;
         VAR pos ps2;
         VAR pos ps3;
-        VAR num d12;
-        VAR num d13;
-        
-        bDummy:=PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,1);
-        
-        ! Nån form av kontroll av resultatet. Lite oklart vad som sker...  Borde undersökas!
-        signChecks:=0;
-        WHILE signChecks<2 DO
-            ! Create rotation matrix
-            ps1.x:=dnumtonum(dnR{1,1});
-            ps1.y:=dnumtonum(dnR{2,1});
-            ps1.z:=dnumtonum(dnR{3,1});
-            ps2.x:=dnumtonum(dnR{1,2});
-            ps2.y:=dnumtonum(dnR{2,2});
-            ps2.z:=dnumtonum(dnR{3,2});
-            ps3.x:=dnumtonum(dnR{1,3});
-            ps3.y:=dnumtonum(dnR{2,3});
-            ps3.z:=dnumtonum(dnR{3,3});
-            camTrob.rot:=vec2quat(ps1,ps2,ps3);
-            ! Create translation vector
-            camTrob.trans:=[dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
-
-            
-            
-            !Check if "pixel" values match x,y axis of camera wobj
-            ps1:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{1,1}),dnumtonum(robPos{1,2}),dnumtonum(robPos{1,3})]);
-            ps2:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{2,1}),dnumtonum(robPos{2,2}),dnumtonum(robPos{2,3})]);
-            ps3:=PoseVect([[0,0,0],camTrob.rot],[dnumtonum(robPos{3,1}),dnumtonum(robPos{3,2}),dnumtonum(robPos{3,3})]);
-            ps1.z:=0;
-            ps2.z:=0;
-            ps3.z:=0;
-            d12:=DotProd(NormalizePos(ps2-ps1),NormalizePos([dnumtonum(camPos{2,1}),dnumtonum(camPos{2,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
-            d13:=DotProd(NormalizePos(ps3-ps1),NormalizePos([dnumtonum(camPos{3,1}),dnumtonum(camPos{3,2}),0]-[dnumtonum(camPos{1,1}),dnumtonum(camPos{1,2}),0]));
-            !0.05 for poorly calibrated robot, 0.01 for properly calibrated robot
-            IF bMoveCamera THEN
-                Zsign:=-1;
-            ELSE
-                Zsign:=1;
-            ENDIF
-
-            IF abs(d12-Zsign)>0.05 OR abs(d13-Zsign)>0.05 THEN
-                !Axes do not match, redo pMatDecomp with reversed Z sign
-                IF signChecks=0 bDummy:=PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,-1);
-                Incr signChecks;
-            ELSE
-                !Signs are OK, break loop
-                signChecks:=10;
-            ENDIF
-
-            
-        ENDWHILE
-        IF signChecks=2 THEN
-            ErrWrite "Error in CalibIntrinsic","unable to match signs in CalibIntrinsic";
+        IF Dim(psS,1) < 3 OR Dim(pxU,1) < 3 THEN
+            ErrWrite "Error in axesCoincide", "Too few detected positions";
             Stop;
         ENDIF
+        
+        !Check if "pixel" values match x,y axis of camera wobj
+        ps1:=PoseVect([[0,0,0],peCam2Rob.rot],[psS{1}.x,psS{1}.y,psS{1}.z]);
+        ps2:=PoseVect([[0,0,0],peCam2Rob.rot],[psS{2}.x,psS{2}.y,psS{2}.z]);
+        ps3:=PoseVect([[0,0,0],peCam2Rob.rot],[psS{3}.x,psS{3}.y,psS{3}.z]);
+        ps1.z:=0;
+        ps2.z:=0;
+        ps3.z:=0;
+        d12:=DotProd(NormalizePos(ps2-ps1),NormalizePos([pxU{2}.u,pxU{2}.v,0]-[pxU{1}.u,pxU{1}.v,0]));
+        d13:=DotProd(NormalizePos(ps3-ps1),NormalizePos([pxU{3}.u,pxU{3}.v,0]-[pxU{1}.u,pxU{1}.v,0]));
+        !0.05 for poorly calibrated robot, 0.01 for properly calibrated robot
+        IF bMoveCamera THEN
+            Zsign:=-1;
+        ELSE
+            Zsign:=1;
+        ENDIF
 
+        IF abs(d12-Zsign)>0.05 OR abs(d13-Zsign)>0.05 THEN
+            !Axes do not match, redo pMatDecomp with reversed Z sign
+            RETURN FALSE;
+        ELSE
+            !Signs are OK
+            RETURN TRUE;
+        ENDIF
+    ENDFUNC
+    
+    
+    
+    LOCAL PROC createPoseFromRAndT(dnum dnR{*,*}, dnum dnT{*,*}, INOUT pose peCam2Rob)
+        VAR pos ps1;
+        VAR pos ps2;
+        VAR pos ps3;
         
+        ! Create rotation matrix
+        ps1.x:=dnumtonum(dnR{1,1});
+        ps1.y:=dnumtonum(dnR{2,1});
+        ps1.z:=dnumtonum(dnR{3,1});
+        ps2.x:=dnumtonum(dnR{1,2});
+        ps2.y:=dnumtonum(dnR{2,2});
+        ps2.z:=dnumtonum(dnR{3,2});
+        ps3.x:=dnumtonum(dnR{1,3});
+        ps3.y:=dnumtonum(dnR{2,3});
+        ps3.z:=dnumtonum(dnR{3,3});
+        peCam2Rob.rot:=vec2quat(ps1,ps2,ps3);
         
-        robTcam:=PoseInv(camTrob);
-        
+        ! Create translation vector
+        peCam2Rob.trans:=[dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
     ENDPROC
     
 
-    LOCAL PROC findP(num nNumPoses, robtarget pS{*}, pixel pxU{*}, INOUT dnum dnP{*,*})
+    LOCAL PROC findP(num nNumPoses, pos psS{*}, pixel pxU{*}, INOUT dnum dnP{*,*})
         VAR dnum dnMatrix{2*nMaxPoints,12};
         VAR dnum dnU{nMaxPoints*2,12};
         VAR dnum dnS{12};
@@ -194,36 +232,40 @@ MODULE MainModule
         VAR pos psStdevS;
         VAR pixel pxStdevU;
 
-        normalize nNumPoses;
+
+        psStdevS := getPosStdev(psS, \psMean:=psMeanS);
+        pxStdevU := getPixelStdev(pxU, \pxMean:=pxMeanU);
+        
+        normalize nNumPoses, psMeanS, psStdevS,pxMeanU,pxStdevU,psS,pxU; 
         
         
         ! Create big matrix used for finding P using SVD, see eq. 6 in paper. 
         FOR r2 FROM 1 TO nNumPoses DO
             ! First row
-            dnMatrix{2*r2-1,1} := NumToDnum(pS{r2}.trans.x);
-            dnMatrix{2*r2-1,2} := NumToDnum(pS{r2}.trans.y);
-            dnMatrix{2*r2-1,3} := NumToDnum(pS{r2}.trans.z);
+            dnMatrix{2*r2-1,1} := NumToDnum(psS{r2}.x);
+            dnMatrix{2*r2-1,2} := NumToDnum(psS{r2}.y);
+            dnMatrix{2*r2-1,3} := NumToDnum(psS{r2}.z);
             dnMatrix{2*r2-1,4} := 1;
             dnMatrix{2*r2-1,5} := 0;
             dnMatrix{2*r2-1,6} := 0;
             dnMatrix{2*r2-1,7} := 0;
             dnMatrix{2*r2-1,8} := 0;
-            dnMatrix{2*r2-1,9} :=  - NumToDnum(pxU{r2}.u * pS{r2}.trans.x);
-            dnMatrix{2*r2-1,10} := - NumToDnum(pxU{r2}.u * pS{r2}.trans.y);
-            dnMatrix{2*r2-1,11} := - NumToDnum(pxU{r2}.u * pS{r2}.trans.z);
+            dnMatrix{2*r2-1,9} :=  - NumToDnum(pxU{r2}.u * psS{r2}.x);
+            dnMatrix{2*r2-1,10} := - NumToDnum(pxU{r2}.u * psS{r2}.y);
+            dnMatrix{2*r2-1,11} := - NumToDnum(pxU{r2}.u * psS{r2}.z);
             dnMatrix{2*r2-1,12} := - NumToDnum(pxU{r2}.u);
             ! Second row
             dnMatrix{2*r2,1} := 0;
             dnMatrix{2*r2,2} := 0;
             dnMatrix{2*r2,3} := 0;
             dnMatrix{2*r2,4} := 0;
-            dnMatrix{2*r2,5} := NumToDnum(pS{r2}.trans.x);
-            dnMatrix{2*r2,6} := NumToDnum(pS{r2}.trans.y);
-            dnMatrix{2*r2,7} := NumToDnum(pS{r2}.trans.z);
+            dnMatrix{2*r2,5} := NumToDnum(psS{r2}.x);
+            dnMatrix{2*r2,6} := NumToDnum(psS{r2}.y);
+            dnMatrix{2*r2,7} := NumToDnum(psS{r2}.z);
             dnMatrix{2*r2,8} := 1;
-            dnMatrix{2*r2,9} :=  - NumToDnum(pxU{r2}.v * pS{r2}.trans.x);
-            dnMatrix{2*r2,10} := - NumToDnum(pxU{r2}.v * pS{r2}.trans.y);
-            dnMatrix{2*r2,11} := - NumToDnum(pxU{r2}.v * pS{r2}.trans.z);
+            dnMatrix{2*r2,9} :=  - NumToDnum(pxU{r2}.v * psS{r2}.x);
+            dnMatrix{2*r2,10} := - NumToDnum(pxU{r2}.v * psS{r2}.y);
+            dnMatrix{2*r2,11} := - NumToDnum(pxU{r2}.v * psS{r2}.z);
             dnMatrix{2*r2,12} := - NumToDnum(pxU{r2}.v);
         ENDFOR
         
@@ -240,30 +282,31 @@ MODULE MainModule
               [dnV{9,nMinIndexS}, dnV{10,nMinIndexS}, dnV{11,nMinIndexS}, dnV{12,nMinIndexS}]];
         
         
-        denormalize;
+        denormalize psMeanS, psStdevS, pxMeanU, pxStdevU, dnP;
         
         
     ENDPROC
     
     LOCAL PROC denormalize(pos psMean, pos psStdev, pixel pxMean, pixel pxStdev, INOUT dnum dnP{*,*})
-        VAR num Scale_robPos{4,4};
-        VAR num Scale_camPos{3,3};
+        VAR dnum dnScale_robPos{4,4};
+        VAR dnum dnScale_camPos{3,3};
         VAR dnum result3{3,3};
         VAR dnum result4{4,4};
         VAR bool bDummy;
         VAR dnum abs_lambda;
-                
-        Scale_robPos:=[[1/psStdev.x,0,0,-psMean.x/psStdev.x],
-                       [0,1/psStdev.y,0,-psMean.y/psStdev.y],
-                       [0,0,1/psStdev.z,-psMean.z/psStdev.z],
-                       [0,0,0,1]];
+        
+        numMatrix2dnumMatrix [[1/psStdev.x,0,0,-psMean.x/psStdev.x],
+                              [0,1/psStdev.y,0,-psMean.y/psStdev.y],
+                              [0,0,1/psStdev.z,-psMean.z/psStdev.z],[0,0,0,1]],
+                            dnScale_robPos;
                        
-        Scale_camPos:=[[1/pxStdev.u,0,-pxMean.u/pxStdev.u],
-                       [0,1/pxStdev.v,-pxMean.v/pxStdev.v],
-                       [0,0,1]];
+        numMatrix2dnumMatrix [[1/pxStdev.u,0,-pxMean.u/pxStdev.u],
+                              [0,1/pxStdev.v,-pxMean.v/pxStdev.v],
+                              [0,0,1]],
+                            dnScale_camPos;
 
-        MatrixMultiplyDnum dnP,Scale_robPos,result4;
-        bDummy:=invert3DMatrix(Scale_camPos,result3);
+        MatrixMultiplyDnum dnP,dnScale_robPos,result4;
+        bDummy:=invert3DMatrix(dnScale_camPos,result3);
         MatrixMultiplyDnum result3,result4,dnP;
         abs_lambda:=SqrtDnum(dnP{3,1}*dnP{3,1}+dnP{3,2}*dnP{3,2}+dnP{3,3}*dnP{3,3});
         !Scale P with the scale factor
@@ -274,12 +317,12 @@ MODULE MainModule
         ENDFOR
     ENDPROC
     
-    LOCAL PROC normalize(num nNumPoses, pos psMeanS, pos psStdevS, pixel pxMeanU, pixel pxStdevU, INOUT robtarget pS{*}, INOUT pixel pxU{*})
+    LOCAL PROC normalize(num nNumPoses, pos psMeanS, pos psStdevS, pixel pxMeanU, pixel pxStdevU, INOUT pos psS{*}, INOUT pixel pxU{*})
         !Calculate normalization scaling
         FOR i FROM 1 TO nNumPoses DO
-            pS{i}.trans.x:=(pS{i}.trans.x-psMeanS.x)/psStdevS.x;
-            pS{i}.trans.y:=(pS{i}.trans.y-psMeanS.y)/psStdevS.y;
-            pS{i}.trans.z:=(pS{i}.trans.z-psMeanS.z)/psStdevS.z;
+            psS{i}.x:=(psS{i}.x-psMeanS.x)/psStdevS.x;
+            psS{i}.y:=(psS{i}.y-psMeanS.y)/psStdevS.y;
+            psS{i}.z:=(psS{i}.z-psMeanS.z)/psStdevS.z;
             pxU{i}.u:=(pxU{i}.u-pxMeanU.u)/pxStdevU.u;
             pxU{i}.v:=(pxU{i}.v-pxMeanU.v)/pxStdevU.v;
         ENDFOR
@@ -287,7 +330,8 @@ MODULE MainModule
     
     LOCAL FUNC pos getPosMean(pos ps{*})
         VAR pos psMean;
-        VAR num nLength := Dim(ps,1);
+        VAR num nLength;
+        nLength := Dim(ps,1);
         FOR i FROM 1 TO nLength DO
             psMean.x:=psMean.x + ps{i}.x/nLength;
             psMean.y:=psMean.y + ps{i}.y/nLength;
@@ -296,12 +340,12 @@ MODULE MainModule
         RETURN psMean;
     ENDFUNC
     
-    LOCAL FUNC pos getPosStdev(pos ps{*}, \pos psMean)
+    LOCAL FUNC pos getPosStdev(pos ps{*}, \INOUT pos psMean)
         VAR pos psStdev;
-        VAR num nLength := Dim(ps,1);
-        IF NOT Present(psMean) THEN
-            psMean := getPosMean(ps);
-        ENDIF
+        VAR num nLength;
+        nLength := Dim(ps,1);
+        
+        psMean := getPosMean(ps);
         FOR i FROM 1 TO nLength DO
             psStdev.x:=psStdev.x+(ps{i}.x-psMean.x)*(ps{i}.x-psMean.x)/(nLength-1);
             psStdev.y:=psStdev.y+(ps{i}.y-psMean.y)*(ps{i}.x-psMean.y)/(nLength-1);
@@ -316,7 +360,8 @@ MODULE MainModule
     
     LOCAL FUNC pixel getPixelMean(pixel px{*})
         VAR pixel pxMean;
-        VAR num nLength := Dim(px,1);
+        VAR num nLength;
+        nLength := Dim(px,1);
         FOR i FROM 1 TO nLength DO
             pxMean.u:=pxMean.u + px{i}.u/nLength;
             pxMean.v:=pxMean.v + px{i}.v/nLength;
@@ -324,12 +369,12 @@ MODULE MainModule
         RETURN pxMean;
     ENDFUNC
     
-    LOCAL FUNC pixel getPixelStdev(pixel px{*}, \pixel pxMean)
+    LOCAL FUNC pixel getPixelStdev(pixel px{*}, \INOUT pixel pxMean)
         VAR pixel pxStdev;
-        VAR num nLength := Dim(px,1);
-        IF NOT Present(pxMean) THEN
-            pxMean := getPixelMean(px);
-        ENDIF
+        VAR num nLength;
+        nLength := Dim(px,1);
+        pxMean := getPixelMean(px);
+        
         FOR i FROM 1 TO nLength DO
             pxStdev.u:=pxStdev.u+(px{i}.u-pxMean.u)*(px{i}.u-pxMean.u)/(nLength-1);
             pxStdev.v:=pxStdev.v+(px{i}.v-pxMean.v)*(px{i}.v-pxMean.v)/(nLength-1);
@@ -341,9 +386,11 @@ MODULE MainModule
     
     
     ! Get the S and U datasets. 
-    LOCAL PROC getSAndU(pixel pxCalibOffset, num nTransform{*,*}, num nNumPoses, INOUT robtarget S{*}, INOUT pixel U{*})
+    LOCAL PROC getSAndU(pixel pxCalibOffset, num nTransform{*,*}, num nNumPoses, INOUT pos S{*}, INOUT pixel U{*})
         VAR num nIndex := 1;
         VAR pixel pxDetectedMarker;
+        VAR robtarget temp;
+        
         IF Dim(nTransform, 1) <> 3 OR Dim(nTransform,2) <> 3 THEN
             RAISE ERR_ILLDIM;
         ENDIF
@@ -352,7 +399,8 @@ MODULE MainModule
         FOR px FROM 1 TO DIM(pxGoodPointsToVisit,1) DO
             ! If the marker is visible from this point (and point is reachable)
             IF placeMarkerAtPixel(pxGoodPointsToVisit{px}, pxCalibOffset, nTransform, pxDetectedMarker) THEN
-                S{nIndex} := getCurrentPosition();
+                temp := getCurrentRobtarget();
+                S{nIndex} := temp.trans;
                 TPWrite "Saves pixel "\Num:=px;
                 U{nIndex} := pxDetectedMarker;
             ENDIF
