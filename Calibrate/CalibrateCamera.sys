@@ -23,13 +23,13 @@ MODULE CalibrateCamera(SYSMODULE,NOVIEW)
     !* 2016-07-16   1.0        Fredrik Löfgren      created   *
     !**********************************************************
 
-    TASK PERS wobjdata calwobj:=[FALSE,TRUE,"",[[427.52,-170.005,400.103],[0.355326,-0.325694,-0.632327,-0.606489]],[[0,0,0],[1,0,0,0]]];
-    TASK PERS num HandCamera_K{3,3}:=[[1656.93,3.33143,669.334],[0,1653.06,490.605],[0,0,1]];
-    TASK PERS num HandCamera_Kinv{3,3}:=[[0.000603527,-1.21629E-06,-0.403364],[0,0.000604937,-0.296785],[0,0,1]];
+    TASK PERS wobjdata calwobj:=[FALSE,TRUE,"",[[479.97,-60.59,357.86],[0.142904,-0.135539,0.691582,0.694926]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS num HandCamera_K{3,3}:=[[1665.47,3.4375,645.635],[0,1663.14,482.618],[0,0,1]];
+    TASK PERS num HandCamera_Kinv{3,3}:=[[0.000600431,-1.24102E-06,-0.38706],[0,0.000601274,-0.290186],[0,0,1]];
 
     LOCAL CONST num calibcameraPoints:=15;
 
-    TASK PERS num Calibrated:=1;
+    TASK PERS num Calibrated:=3;
 
 
     !**********************************************************
