@@ -233,8 +233,8 @@ MODULE MainModule
         VAR pixel pxStdevU;
 
 
-        psStdevS := getPosStdev(psS, \psMean:=psMeanS);
-        pxStdevU := getPixelStdev(pxU, \pxMean:=pxMeanU);
+        psStdevS := getPosStdev(nNumPoses, psS, \psMean:=psMeanS);
+        pxStdevU := getPixelStdev(nNumPoses, pxU, \pxMean:=pxMeanU);
         
         normalize nNumPoses, psMeanS, psStdevS,pxMeanU,pxStdevU,psS,pxU; 
         
@@ -274,6 +274,10 @@ MODULE MainModule
         MatrixSVD dnMatrix\A_m:=nMaxPoints,\A_n:=12, dnU, dnS, dnV\Econ;
 
         !Find smallest singular value
+        ! TODO: Check so this isn't zero because of nNumPoses < nMaxPoses and several rows become empty 0 rows
+        ! TODO: Becuase dnMatrix is calculated from the dnMatrix which may be bigger than the number of actual detected points
+        ! TODO: Would be better to set the size of U and S and dnMatrix to nNumPoses instead of some arbitrary max size...
+        ! TODO: Anyway S shouldnt be affected by this?? But the same problem holds for other situations. Always check the size of nNumPoses
         dnMinValueS := MinDnumArray(dnS, \idx:=nMinIndexS);
 
         
@@ -328,28 +332,24 @@ MODULE MainModule
         ENDFOR
     ENDPROC
     
-    LOCAL FUNC pos getPosMean(pos ps{*})
+    LOCAL FUNC pos getPosMean(num nNumPoses, pos ps{*})
         VAR pos psMean;
-        VAR num nLength;
-        nLength := Dim(ps,1);
-        FOR i FROM 1 TO nLength DO
-            psMean.x:=psMean.x + ps{i}.x/nLength;
-            psMean.y:=psMean.y + ps{i}.y/nLength;
-            psMean.z:=psMean.z + ps{i}.z/nLength;
+        FOR i FROM 1 TO nNumPoses DO
+            psMean.x:=psMean.x + ps{i}.x/nNumPoses;
+            psMean.y:=psMean.y + ps{i}.y/nNumPoses;
+            psMean.z:=psMean.z + ps{i}.z/nNumPoses;
         ENDFOR
         RETURN psMean;
     ENDFUNC
     
-    LOCAL FUNC pos getPosStdev(pos ps{*}, \INOUT pos psMean)
+    LOCAL FUNC pos getPosStdev(num nNumPoses, pos ps{*}, \INOUT pos psMean)
         VAR pos psStdev;
-        VAR num nLength;
-        nLength := Dim(ps,1);
         
-        psMean := getPosMean(ps);
-        FOR i FROM 1 TO nLength DO
-            psStdev.x:=psStdev.x+(ps{i}.x-psMean.x)*(ps{i}.x-psMean.x)/(nLength-1);
-            psStdev.y:=psStdev.y+(ps{i}.y-psMean.y)*(ps{i}.x-psMean.y)/(nLength-1);
-            psStdev.z:=psStdev.z+(ps{i}.z-psMean.z)*(ps{i}.x-psMean.z)/(nLength-1);
+        psMean := getPosMean(nNumPoses, ps);
+        FOR i FROM 1 TO nNumPoses DO
+            psStdev.x:=psStdev.x+(ps{i}.x-psMean.x)*(ps{i}.x-psMean.x)/(nNumPoses-1);
+            psStdev.y:=psStdev.y+(ps{i}.y-psMean.y)*(ps{i}.y-psMean.y)/(nNumPoses-1);
+            psStdev.z:=psStdev.z+(ps{i}.z-psMean.z)*(ps{i}.z-psMean.z)/(nNumPoses-1);
         ENDFOR
         psStdev.x:=Sqrt(psStdev.x);
         psStdev.y:=Sqrt(psStdev.y);
@@ -358,26 +358,22 @@ MODULE MainModule
         RETURN psStdev;
     ENDFUNC
     
-    LOCAL FUNC pixel getPixelMean(pixel px{*})
+    LOCAL FUNC pixel getPixelMean(num nNumPoses, pixel px{*})
         VAR pixel pxMean;
-        VAR num nLength;
-        nLength := Dim(px,1);
-        FOR i FROM 1 TO nLength DO
-            pxMean.u:=pxMean.u + px{i}.u/nLength;
-            pxMean.v:=pxMean.v + px{i}.v/nLength;
+        FOR i FROM 1 TO nNumPoses DO
+            pxMean.u:=pxMean.u + px{i}.u/nNumPoses;
+            pxMean.v:=pxMean.v + px{i}.v/nNumPoses;
         ENDFOR
         RETURN pxMean;
     ENDFUNC
     
-    LOCAL FUNC pixel getPixelStdev(pixel px{*}, \INOUT pixel pxMean)
+    LOCAL FUNC pixel getPixelStdev(num nNumPoses, pixel px{*}, \INOUT pixel pxMean)
         VAR pixel pxStdev;
-        VAR num nLength;
-        nLength := Dim(px,1);
-        pxMean := getPixelMean(px);
+        pxMean := getPixelMean(nNumPoses, px);
         
-        FOR i FROM 1 TO nLength DO
-            pxStdev.u:=pxStdev.u+(px{i}.u-pxMean.u)*(px{i}.u-pxMean.u)/(nLength-1);
-            pxStdev.v:=pxStdev.v+(px{i}.v-pxMean.v)*(px{i}.v-pxMean.v)/(nLength-1);
+        FOR i FROM 1 TO nNumPoses DO
+            pxStdev.u:=pxStdev.u+(px{i}.u-pxMean.u)*(px{i}.u-pxMean.u)/(nNumPoses-1);
+            pxStdev.v:=pxStdev.v+(px{i}.v-pxMean.v)*(px{i}.v-pxMean.v)/(nNumPoses-1);
         ENDFOR
         pxStdev.u:=Sqrt(pxStdev.u);
         pxStdev.v:=Sqrt(pxStdev.v);
@@ -400,12 +396,15 @@ MODULE MainModule
             ! If the marker is visible from this point (and point is reachable)
             IF placeMarkerAtPixel(pxGoodPointsToVisit{px}, pxCalibOffset, nTransform, pxDetectedMarker) THEN
                 temp := getCurrentRobtarget();
-                S{nIndex} := temp.trans;
+                psS{nIndex} := temp.trans;
                 TPWrite "Saves pixel "\Num:=px;
-                U{nIndex} := pxDetectedMarker;
+                pxU{nIndex} := pxDetectedMarker;
+                Incr nIndex;
             ENDIF
         ENDFOR
         
+        ! Minus one to compensate for last incrementation
+        nNumPoses := nIndex - 1;
     ENDPROC
     
     LOCAL PROC preCalibration(INOUT num transform{*,*}, INOUT pixel offset)
@@ -489,21 +488,35 @@ MODULE MainModule
     
     ! Moves in the arm along the specified axis to the most negative and then most positive to find out the biggest difference in pixel distance
     LOCAL PROC getMarkerData(num nDirection, INOUT num traveledDistanceAlongAxis, INOUT pixel pixelDifferences)
-        CONST num nDistance:=30;
+        CONST num nMaxDistance:=30;
+        CONST num nDecreaseFactor := 0.5;
         VAR pixel psMaxDetectedMarker;
         VAR pixel psMinDetectedMarker;
-        VAR bool bDummy;
+        VAR num nPositiveDistance:=nMaxDistance;
+        VAR num nNegativeDistance:=nMaxDistance;
         
         TEST nDirection
             CASE DIRECTION_X:
-                bDummy := getMarkerInfoAtPos(pStart,[nDistance,0,0], psMaxDetectedMarker);
-                bDummy := getMarkerInfoAtPos(pStart,[-nDistance,0,0], psMinDetectedMarker);
+                WHILE NOT getMarkerInfoAtPos(pStart,[nPositiveDistance,0,0], psMaxDetectedMarker) DO
+                    nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                ENDWHILE
+                WHILE NOT getMarkerInfoAtPos(pStart,[-nNegativeDistance,0,0], psMinDetectedMarker) DO
+                    nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                ENDWHILE
             CASE DIRECTION_Y:
-                bDummy := getMarkerInfoAtPos(pStart,[0,nDistance,0], psMaxDetectedMarker);
-                bDummy := getMarkerInfoAtPos(pStart,[0,-nDistance,0], psMinDetectedMarker);
+                WHILE NOT getMarkerInfoAtPos(pStart,[0,nPositiveDistance,0], psMaxDetectedMarker) DO
+                    nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                ENDWHILE
+                WHILE NOT getMarkerInfoAtPos(pStart,[0,-nNegativeDistance,0], psMinDetectedMarker) DO
+                    nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                ENDWHILE
             CASE DIRECTION_Z:
-                bDummy := getMarkerInfoAtPos(pStart,[0,0,nDistance], psMaxDetectedMarker);
-                bDummy := getMarkerInfoAtPos(pStart,[0,0,-nDistance], psMinDetectedMarker);
+                WHILE NOT getMarkerInfoAtPos(pStart,[0,0,nPositiveDistance], psMaxDetectedMarker) DO
+                    nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                ENDWHILE
+                WHILE NOT getMarkerInfoAtPos(pStart,[0,0,-nNegativeDistance], psMinDetectedMarker) DO
+                    nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                ENDWHILE
             DEFAULT: 
                 TPWrite "Illegal direction axis specified";
                 RAISE ERR_ARGVALERR;
@@ -515,7 +528,7 @@ MODULE MainModule
         Move(pStart);
         
         ! Returns the differencies 
-        traveledDistanceAlongAxis := 2 * nDistance;
+        traveledDistanceAlongAxis := nPositiveDistance + nNegativeDistance;
         pixelDifferences.u := psMaxDetectedMarker.u - psMinDetectedMarker.u;
         pixelDifferences.v := psMaxDetectedMarker.v - psMinDetectedMarker.v;
         pixelDifferences.scale := psMaxDetectedMarker.scale - psMinDetectedMarker.scale;
