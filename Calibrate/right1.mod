@@ -11,7 +11,7 @@ MODULE MainModule
     LOCAL CONST num DIRECTION_Y:=1;
     LOCAL CONST num DIRECTION_Z:=2;
     
-    LOCAL CONST bool bMoveCamera := TRUE;
+    LOCAL CONST bool bMoveCamera := FALSE;
     ! The general speed used during calibration
     LOCAL CONST speeddata vSpeed := v400;
     LOCAL VAR cameradev cameraToUse;
@@ -55,14 +55,29 @@ MODULE MainModule
         VAR dnum dnKinv{3,3};
         
         ! Moves to a initial position with correct configuration. 
-        MoveAbsJ [[73.7158,-90.4035,20.6941,36.0716,113.105,138.297],[-75.8492,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
+        !MoveAbsJ [[73.7158,-90.4035,20.6941,36.0716,113.105,138.297],[-75.8492,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
         
         WaitTime 1;
         ! TOOD: Use WaitSyncTask to be sure the other arm is standing still after its MoveAbsJ instruction
         pStart := getCurrentRobtarget();
+        
+        ! Setup camera device
         setUpCameraDevice; 
+        
+        ! Phase one of the paper
         calibIntrinsicAndRotation peRobTCam, dnK, dnKinv;
-
+        !peRobTCam := [[386.23,125.164,235.203],[0.498083,-0.475105,-0.510217,-0.515623]];
+        !dnK := [[-0.157644977384217,0.00374791804962304,639.404475621505],[0,-0.15959236409683,479.917088423164],[0,0,1]];
+        !dnKinv := [[-6.34336733458515,-0.148969664452468,4127.4705518724],[0,-6.26596394921328,3007.14317467095],[0,0,1.00000000000045]];
+        
+        TPWrite "Done with part 1"; 
+        
+        ! Phase two and three of the paper
+        calibExtrinsic peRobTCam;
+        
+        
+        
+        
         Stop \AllMoveTasks;
         
 	ENDPROC
@@ -86,6 +101,36 @@ MODULE MainModule
         !Initialize the camera
         InitCamera cameraToUse,markerFinderJob;
     ENDPROC
+    
+    
+    ! Phase two and three of the paper
+    LOCAL PROC calibExtrinsic(pose peRob2Cam)
+        getExtSAndU peRob2Cam;
+        
+        ! Equation (15) in paper
+        !getPointsInCameraFrame nNumPoses, nZ;
+        
+        
+    ENDPROC
+    
+    
+    
+    LOCAL PROC getExtSAndU(pose peRob2Cam)
+        VAR robtarget pTarget;
+        ! Align marker to cam axes (using peRob2Cam)
+        pTarget := pStart;
+        ! Rotate up the angle
+        !pTarget.rot := [0.70710678118, 0.70710678118, 0, 0] * peRob2Cam.rot;
+        pTarget.rot := peRob2Cam.rot;
+        
+        Move(pTarget);
+        
+    ENDPROC
+    
+    
+    
+    
+    
     
     ! Whole phase one of the paper.
     LOCAL PROC calibIntrinsicAndRotation(INOUT pose peRob2Cam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*})
@@ -116,8 +161,8 @@ MODULE MainModule
         ! Find an initial transformation from pixel coordinates to world coordinates
         preCalibration nTransform, pxCalibOffset;
 
-        ! Get measurements of pixels (U dataset) and their correspondences in real world (S dataset)
-        getSAndU pxCalibOffset, nTransform, nNumPoses, psS, pxU;
+        ! Get measurements of pixels (U_int dataset) and their correspondences in real world (S_int dataset)
+        getIntSAndU pxCalibOffset, nTransform, nNumPoses, psS, pxU;
         
         ! Create a P (transformation matrix) from the S and U datasets
         findP nNumPoses, psS, pxU, dnP;
@@ -151,6 +196,10 @@ MODULE MainModule
         ! Return the inverse transform, from robot base to camera coordinate system
         peRob2Cam:=PoseInv(peCam2Rob);
         ! Note that only the R part of peRobTCam is correct so far! 
+        
+        
+        ! TODO: Refine calibration result with non linear optimization, including distortion
+        !CalibIntNonLin psS,psU,nNumPoses,peRob2Cam,dnK;
         
         
         ! Returns and peRobTCam and K (and Kinv) values. Done with phase one.  
@@ -381,8 +430,8 @@ MODULE MainModule
     ENDFUNC
     
     
-    ! Get the S and U datasets. 
-    LOCAL PROC getSAndU(pixel pxCalibOffset, num nTransform{*,*}, num nNumPoses, INOUT pos S{*}, INOUT pixel U{*})
+    ! Get the S_int and U_int datasets, for intrinsic calibration. 
+    LOCAL PROC getIntSAndU(pixel pxCalibOffset, num nTransform{*,*}, INOUT num nNumPoses, INOUT pos psS{*}, INOUT pixel pxU{*})
         VAR num nIndex := 1;
         VAR pixel pxDetectedMarker;
         VAR robtarget temp;
