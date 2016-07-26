@@ -320,7 +320,7 @@ MODULE MainModule
         
         
         ! Apply SVD for this! 
-        MatrixSVD dnMatrix\A_m:=nMaxPoints,\A_n:=12, dnU, dnS, dnV\Econ;
+        MatrixSVD dnMatrix\A_m:=2*nNumPoses,\A_n:=12, dnU, dnS, dnV\Econ;
 
         !Find smallest singular value
         ! TODO: Check so this isn't zero because of nNumPoses < nMaxPoses and several rows become empty 0 rows
