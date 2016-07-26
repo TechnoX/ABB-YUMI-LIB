@@ -65,7 +65,7 @@ MODULE MainModule
         setUpCameraDevice; 
         
         ! Phase one of the paper
-        calibIntrinsicAndRotation peRobTCam, dnK, dnKinv;
+        calibIntrinsicAndRotation peRobTCam, dnK, dnKinv,\print;
         !peRobTCam := [[386.23,125.164,235.203],[0.498083,-0.475105,-0.510217,-0.515623]];
         !dnK := [[-0.157644977384217,0.00374791804962304,639.404475621505],[0,-0.15959236409683,479.917088423164],[0,0,1]];
         !dnKinv := [[-6.34336733458515,-0.148969664452468,4127.4705518724],[0,-6.26596394921328,3007.14317467095],[0,0,1.00000000000045]];
@@ -133,7 +133,7 @@ MODULE MainModule
     
     
     ! Whole phase one of the paper.
-    LOCAL PROC calibIntrinsicAndRotation(INOUT pose peRob2Cam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*})
+    LOCAL PROC calibIntrinsicAndRotation(INOUT pose peRob2Cam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*},\switch print)
         ! The number of detected markers, the m value in the paper
         VAR num nNumPoses;
         ! The first S dataset, from paper
@@ -166,7 +166,10 @@ MODULE MainModule
         
         ! Create a P (transformation matrix) from the S and U datasets
         findP nNumPoses, psS, pxU, dnP;
-
+        IF Present(print) THEN
+            printP nNumPoses, dnP, psS, pxU;
+        ENDIF
+        
         ! Creates a transform from robot to camera, and the intrinsic parameters dnK
         ! (as a side effect from the algorithm we also obtain the inverted K matrix, which can be good for future use). 
         IF NOT PMatDecompQR(dnP,dnK,dnKinv,dnR,dnT,1) THEN 
@@ -204,6 +207,25 @@ MODULE MainModule
         
         ! Returns and peRobTCam and K (and Kinv) values. Done with phase one.  
     ENDPROC
+    
+    LOCAL PROC printP(num nNumPoses, dnum dnP{*,*}, pos psS{*}, pixel pxU{*})
+        ! The back projected point
+        VAR dnum nBackProjected{3,1};
+        VAR pixel pxBackProjectedError;
+        
+        !Calculate back projection error
+        TPWrite "Back Projection Error=";
+        FOR i FROM 1 TO nNumPoses DO
+            MatrixMultiplyDnum dnP,[[NumToDnum(psS{i}.x)],[NumToDnum(psS{i}.y)],[NumToDnum(psS{i}.z)],[1]],nBackProjected;
+            nBackProjected{1,1}:=nBackProjected{1,1}/nBackProjected{3,1};
+            nBackProjected{2,1}:=nBackProjected{2,1}/nBackProjected{3,1};
+            pxBackProjectedError.u := DnumToNum(nBackProjected{1,1}) - pxU{i}.u;
+            pxBackProjectedError.v := DnumToNum(nBackProjected{2,1}) - pxU{i}.v;
+            TPWrite "error u: " + NumToStr(pxBackProjectedError.u,3) + ", v: " + NumToStr(pxBackProjectedError.v,3);
+            WaitTime 1;
+        ENDFOR
+    ENDPROC
+    
     
     
     LOCAL FUNC bool axesCoincide(pose peCam2Rob, pos psS{*}, pixel pxU{*})
