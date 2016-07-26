@@ -20,7 +20,9 @@ MODULE MainModule
     LOCAL CONST pixel pxImageSize := [1280,960,0];
     LOCAL CONST num nMargin := 200;
     LOCAL CONST num nScales{3} := [90, 70, 50];
-    LOCAL CONST num nMaxPoints:=2*9 + 1;
+    
+    ! Can't handle more than 18 points because of some arbitrary limit inside MatrixSVD. "Report the problem to ABB Robotics"
+    LOCAL CONST num nMaxPoints:=18;
     LOCAL CONST pixel pxGoodPointsToVisit{nMaxPoints} := [[pxImageSize.u/2             , pxImageSize.v/2             , nScales{1}],
                                                           [                    nMargin ,                     nMargin , nScales{2}],
                                                           [pxImageSize.u/2             ,                 1.5*nMargin , nScales{2}],
@@ -29,7 +31,6 @@ MODULE MainModule
                                                           [pxImageSize.u -     nMargin , pxImageSize.v -     nMargin , nScales{2}],
                                                           [pxImageSize.u/2             , pxImageSize.v - 1.5*nMargin , nScales{2}],
                                                           [                1.5*nMargin , pxImageSize.v -     nMargin , nScales{2}],
-                                                          [                    nMargin , pxImageSize.v/2             , nScales{2}],
                                                           [pxImageSize.u/2             , pxImageSize.v/2             , nScales{2}],
                                                           [                    nMargin ,                     nMargin , nScales{3}],
                                                           [pxImageSize.u/2             ,                 1.5*nMargin , nScales{3}],
@@ -74,8 +75,6 @@ MODULE MainModule
         
         ! Phase two and three of the paper
         calibExtrinsic peRobTCam;
-        
-        
         
         
         Stop \AllMoveTasks;
@@ -291,7 +290,7 @@ MODULE MainModule
 
     LOCAL PROC findP(num nNumPoses, pos psS{*}, pixel pxU{*}, INOUT dnum dnP{*,*})
         VAR dnum dnMatrix{2*nMaxPoints,12};
-        VAR dnum dnU{nMaxPoints*2,12};
+        VAR dnum dnU{2*nMaxPoints,12};
         VAR dnum dnS{12};
         VAR dnum dnV{12,12};
         VAR num nMinIndexS;
@@ -302,8 +301,7 @@ MODULE MainModule
         ! The standard deviation of the datasets
         VAR pos psStdevS;
         VAR pixel pxStdevU;
-
-
+        
         psStdevS := getPosStdev(nNumPoses, psS, \psMean:=psMeanS);
         pxStdevU := getPixelStdev(nNumPoses, pxU, \pxMean:=pxMeanU);
         
@@ -345,21 +343,14 @@ MODULE MainModule
         MatrixSVD dnMatrix\A_m:=2*nNumPoses,\A_n:=12, dnU, dnS, dnV\Econ;
 
         !Find smallest singular value
-        ! TODO: Check so this isn't zero because of nNumPoses < nMaxPoses and several rows become empty 0 rows
-        ! TODO: Becuase dnMatrix is calculated from the dnMatrix which may be bigger than the number of actual detected points
-        ! TODO: Would be better to set the size of U and S and dnMatrix to nNumPoses instead of some arbitrary max size...
-        ! TODO: Anyway S shouldnt be affected by this?? But the same problem holds for other situations. Always check the size of nNumPoses
         dnMinValueS := MinDnumArray(dnS, \idx:=nMinIndexS);
-
         
+        ! TODO: I suspect that dnS is always sorted from largest to smallest number, so it should be fine to just take the last value from dnV and use below?? 
         dnP:=[[dnV{1,nMinIndexS}, dnV{2,nMinIndexS},  dnV{3,nMinIndexS},  dnV{4,nMinIndexS}],
               [dnV{5,nMinIndexS}, dnV{6,nMinIndexS},  dnV{7,nMinIndexS},  dnV{8,nMinIndexS}],
               [dnV{9,nMinIndexS}, dnV{10,nMinIndexS}, dnV{11,nMinIndexS}, dnV{12,nMinIndexS}]];
         
-        
         denormalize psMeanS, psStdevS, pxMeanU, pxStdevU, dnP;
-        
-        
     ENDPROC
     
     LOCAL PROC denormalize(pos psMean, pos psStdev, pixel pxMean, pixel pxStdev, INOUT dnum dnP{*,*})
