@@ -66,13 +66,12 @@ MODULE MainModule
         setUpCameraDevice; 
         
         ! Phase one of the paper
-        calibIntrinsicAndRotation peRobTCam, dnK, dnKinv,\print;
-        !peRobTCam := [[386.23,125.164,235.203],[0.498083,-0.475105,-0.510217,-0.515623]];
-        !dnK := [[-0.157644977384217,0.00374791804962304,639.404475621505],[0,-0.15959236409683,479.917088423164],[0,0,1]];
-        !dnKinv := [[-6.34336733458515,-0.148969664452468,4127.4705518724],[0,-6.26596394921328,3007.14317467095],[0,0,1.00000000000045]];
+        !calibIntrinsicAndRotation peRobTCam, dnK, dnKinv;
+        peRobTCam := [[203.539,-44.2514,187.437],[0.682139,0.0573078,0.433953,0.585736]];
+        !dnK := [[1678.42804821599,0.45137927995488,659.149972953566],[0,1674.83407370495,502.644040759519],[0,0,1]];
+        !dnKinv := [[0.000595795572567382,-1.60570996714238E-07,-0.392637925489027],[0,0.000597074071814093,-0.300115724089375],[0,0,1]];
         
         TPWrite "Done with part 1"; 
-        
         ! Phase two and three of the paper
         calibExtrinsic peRobTCam;
         
@@ -120,15 +119,35 @@ MODULE MainModule
         pTarget := pStart;
         ! Rotate up the angle
         !pTarget.rot := [0.70710678118, 0.70710678118, 0, 0] * peRob2Cam.rot;
-        pTarget.rot := peRob2Cam.rot;
+        !pTarget.rot := peRob2Cam.rot;
         
-        Move(pTarget);
+        MoveInCameraFramePlane pStart, [[ 100,0,0],[0.985, 0.174,0,0]], peRob2Cam;
+        MoveInCameraFramePlane pStart, [[-100,0,0],[0.985,-0.174,0,0]], peRob2Cam;
+        MoveInCameraFramePlane pStart, [[0, 100,0],[0.985,0,0, 0.174]], peRob2Cam;
+        MoveInCameraFramePlane pStart, [[0,-100,0],[0.985,0,0,-0.174]], peRob2Cam;
+        MoveInCameraFramePlane pStart, [[0,0, 100],[0.985,0, 0.174,0]], peRob2Cam;
+        MoveInCameraFramePlane pStart, [[0,0,-100],[0.985,0,-0.174,0]], peRob2Cam;
         
+        Stop \AllMoveTasks;
     ENDPROC
     
     
-    
-    
+    ! Moves to a relative position (translation) in the camera frame
+    ! With an addition rotation of the wrist relative origin rotation.
+    LOCAL PROC MoveInCameraFramePlane(robtarget origin, pose relativeMovement, pose peRob2Cam)
+        VAR robtarget pTarget;
+        VAR Pose temp;
+        pTarget := origin;
+        temp := PoseMult([origin.trans, peRob2Cam.rot], [relativeMovement.trans,[1,0,0,0]]);
+        pTarget.trans := temp.trans;
+        
+        temp := PoseMult([[0,0,0],origin.rot], [[0,0,0],relativeMovement.rot]);
+        pTarget.rot := temp.rot;
+        
+        
+        !pTarget.rot := temp.rot;
+        Move(pTarget);
+    ENDPROC
     
     
     ! Whole phase one of the paper.
