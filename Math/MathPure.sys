@@ -1257,6 +1257,8 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN sqrt(psPos.x * psPos.x + psPos.y * psPos.y + psPos.z * psPos.z);
     ENDFUNC
     
+    
+    
     FUNC polar pos2polar(pos psPos)
         VAR polar poPolar;
         poPolar.radius := norm(psPos);
@@ -1272,6 +1274,15 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         RETURN poPolar;
     ENDFUNC
     
-    
+    PROC numMatrix2dnumMatrix(num in{*,*}, INOUT dnum out{*,*})
+        IF DIM(in,1) <> DIM(out,1) OR DIM(in,2) <> DIM(out,2) THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        FOR r FROM 1 TO DIM(in,1) DO
+            FOR c FROM 1 TO DIM(in,2) DO
+                out{r,c} := NumToDnum(in{r,c});
+            ENDFOR
+        ENDFOR
+    ENDPROC
     
 ENDMODULE
