@@ -38,7 +38,8 @@ MODULE MainModule
     PROC main()
         VAR pose peRobTCam;
         VAR dnum dnK{3,3};
-        VAR dnum dnKinv{3,3};        
+        VAR dnum dnKInv{3,3};
+        VAR num   nKInv{3,3};
         
         
         ! Moves to a initial position with correct configuration. 
@@ -55,12 +56,14 @@ MODULE MainModule
         ! Phase one of the paper
         !calibIntrinsicAndRotation peRobTCam, dnK, dnKinv;
         peRobTCam := [[376.664,-198.277,287.198],[0.459742,-0.523948,-0.49912,-0.514777]];
-        !dnK := [[1678.42804821599,0.45137927995488,659.149972953566],[0,1674.83407370495,502.644040759519],[0,0,1]];
-        !dnKinv := [[0.000595795572567382,-1.60570996714238E-07,-0.392637925489027],[0,0.000597074071814093,-0.300115724089375],[0,0,1]];
+        dnK := [[1678.42804821599,0.45137927995488,659.149972953566],[0,1674.83407370495,502.644040759519],[0,0,1]];
+        dnKinv := [[0.000595795572567382,-1.60570996714238E-07,-0.392637925489027],[0,0.000597074071814093,-0.300115724089375],[0,0,1]];
         
-        TPWrite "Done with part 1"; 
+        TPWrite "Done with part 1";
+        
+        dnumMatrix2numMatrix dnKinv, nKInv;
         ! Phase two and three of the paper
-        calibExtrinsic peRobTCam;
+        calibExtrinsic peRobTCam, nKInv;
         
         
         Stop \AllMoveTasks;
@@ -89,7 +92,7 @@ MODULE MainModule
     
     
     ! Phase two and three of the paper
-    LOCAL PROC calibExtrinsic(pose peRob2Cam)
+    LOCAL PROC calibExtrinsic(pose peRob2Cam, num nKInv{*,*})
         ! The pixel where the first marker was detected (during precalibration)
         VAR pixel pxPreOffset;
         ! The precalibration transform, used to place the logo at specific coordinates in the image
@@ -97,26 +100,118 @@ MODULE MainModule
 
         VAR Pose peS{nPoints2};
         VAR pixel pxU{nPoints2};
+        VAR pos psT{nPoints2};
+        VAR num nNumPoints;
+        
+        IF Dim(nKInv,1) <> 3 OR Dim(nKInv,2) <> 3 THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
         
         ! Precalibration to get a sense of what direction is up, down, etc of the image
         ! The result here can be used to positionate the logo at specific pixels in the image
         ! Find an initial transformation from pixel coordinates to world coordinates
         preCalibration nPreTransform, pxPreOffset,\peRob2Cam:=peRob2Cam;
         
-        TPWrite "Klar med precalib"; 
-        
         !nPreTransform := [[0.107571,-0.000195339,-0.0928939],[-0.00078892,0.107814,0.242419],[0.00451787,-0.00350462,-1.7709]];
         !pxPreOffset := [679.272,261.089,60.6785];
         
         getExtSAndU peRob2Cam, pxPreOffset, nPreTransform, peS, pxU;
+        ! TODO: Should not use nPoints2 but instead a number returned from getExtSAndU that indicates the number of valid elements of S and U
+        nNumPoints := nPoints2;
         
-        ! Equation (15) in paper
-        !getPointsInCameraFrame nNumPoses, nZ;
+        ! Equation (14) and (15) in paper
+        getPointsInCameraFrame nNumPoints, peS, pxU, nKinv, psT;
         
+        
+        ! Part three!! 
+        TPWrite "Done with phase 2";
+        
+        SolveHandEyeEquation nNumPoints, peRob2Cam, peS, psT;
         
     ENDPROC
     
     
+    LOCAL PROC SolveHandEyeEquation(num nNumPoses, pose peRob2Cam, pose peS{*}, pos psT{*})
+        VAR pose peCam2Marker{nPoints2};
+        createCam2Marker nNumPoses, peRob2Cam, peS, psT, peCam2Marker;
+    ENDPROC
+    
+    
+    ! Augment the position data from the camera to include orientation, assigning the same orientation to the calibration marker as measured for the robot wrist
+    LOCAL PROC createCam2Marker(num nNumPoses, pose peRob2Cam, pose peS{*}, pos psT{*}, INOUT pose peCam2Marker{*})
+        VAR pose peCam2Rob;
+        peCam2Rob := PoseInv(peRob2Cam);
+        FOR i FROM 1 TO nNumPoses DO
+            peCam2Marker{i}.rot := peCam2Rob.rot * peS{i}.rot;
+            peCam2Marker{i}.trans := psT{i};
+        ENDFOR
+    ENDPROC
+        
+    ! Equation (14) and (15) in paper
+    LOCAL PROC getPointsInCameraFrame(num nNumPoses, pose peS{*}, pixel pxU{*}, num nKinv{*,*}, INOUT pos psT{*})
+        VAR num nDistance; 
+        
+        IF Dim(peS,1) < nNumPoses OR Dim(pxU,1) < nNumPoses OR Dim(psT,1) < nNumPoses THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        
+        ! For all detected points
+        FOR i FROM 1 TO nNumPoses/2 DO
+            
+            ! Get distance. Equation (14)
+            ! TODO: Take several readings and do a mean value of them. Three was used for each height, in the old code...
+            nDistance := getDistanceToCam(nKinv, peS{2*i-1}.trans, peS{2*i}.trans, 
+                                                 pxU{2*i-1},       pxU{2*i});
+
+            ! Project the pixel back to a 3D coordinate, equation (15) 
+            psT{2*i-1} := backProjectPixel(pxU{2*i-1}, nKInv, nDistance);
+            psT{2*i}   := backProjectPixel(pxU{2*i},   nKInv, nDistance);
+            
+        ENDFOR
+    ENDPROC
+    
+    LOCAL FUNC pos backProjectPixel(pixel px, num nKinv{*,*}, num nDistance)
+        VAR pos psRes;
+        VAR num nCoord{3,1};
+        VAR num nPixel{3,1};
+        
+        
+        nPixel:=[[px.u],[px.v],[1]];
+        MatrixMultiply nKInv, nPixel, nCoord;
+        
+        psRes.x := nCoord{1,1};
+        psRes.y := nCoord{2,1};
+        psRes.z := nCoord{3,1};
+        
+        ! Normalize vector (I think this is necessary? Was not that clear in the former code)
+        psRes := NormalizePos(psRes);
+        
+        psRes := psRes * nDistance;
+        
+        RETURN psRes;
+    ENDFUNC
+    
+    
+    LOCAL FUNC num getDistanceToCam(num nKInv{*,*}, pos ps1, pos ps2, pixel px1, pixel px2)
+        VAR pos psDelta;
+        VAR pixel pxDelta;
+        VAR num nRes{3,1};
+        VAR pos psRes;
+        VAR num nDistance; 
+        
+        psDelta:=ps1-ps2;
+        pxDelta.u:=px1.u-px2.u;
+        pxDelta.v:=px1.v-px2.v;
+        
+        ! TODO: Why have 0 as last element?? It should be 1 as a homogenous coordinate?
+        ! TODO: ... or is it because the delta is of two homogenous coords and 1 - 1 = 0 ? :) 
+        MatrixMultiply nKInv,[[pxDelta.u],[pxDelta.v],[0]], nRes;
+        psRes:=[nRes{1,1}, nRes{2,1}, nRes{3,1}];
+        
+        nDistance := VectMagn(psDelta)/VectMagn(psRes);
+        
+        RETURN nDistance;
+    ENDFUNC
     
     LOCAL PROC getExtSAndU(pose peRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*})
         VAR pixel pxFirstMarker;
@@ -182,7 +277,6 @@ MODULE MainModule
             
         ENDFOR
         
-        Stop \AllMoveTasks;
     ENDPROC
     
     
