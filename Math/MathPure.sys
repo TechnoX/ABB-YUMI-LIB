@@ -1305,4 +1305,15 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDFOR
     ENDPROC
     
+    PROC dnumMatrix2numMatrix(dnum in{*,*}, INOUT num out{*,*})
+        IF DIM(in,1) <> DIM(out,1) OR DIM(in,2) <> DIM(out,2) THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        FOR r FROM 1 TO DIM(in,1) DO
+            FOR c FROM 1 TO DIM(in,2) DO
+                out{r,c} := DnumToNum(in{r,c});
+            ENDFOR
+        ENDFOR
+    ENDPROC
+    
 ENDMODULE
