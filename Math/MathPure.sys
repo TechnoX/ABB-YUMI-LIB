@@ -589,6 +589,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     FUNC pos NormalizePos(pos a)
         VAR pos retpos;
         VAR num norm;
+        ! TODO: Use VectMagn? Or normalize
         norm:=sqrt(a.x*a.x+a.y*a.y+a.z*a.z);
         retpos.x:=a.x/norm;
         retpos.y:=a.y/norm;
@@ -1275,17 +1276,12 @@ MODULE MathPure(SYSMODULE,NOVIEW)
             !TPWrite "On path";
             RETURN VectMagn(mPos-DotProd(pDir_hat,mPos_hat)*mPosNorm*pDir_hat);
         ENDIF
-    ENDFUNC
-
-    FUNC num norm(pos psPos)
-        RETURN sqrt(psPos.x * psPos.x + psPos.y * psPos.y + psPos.z * psPos.z);
-    ENDFUNC
-    
+    ENDFUNC    
     
     
     FUNC polar pos2polar(pos psPos)
         VAR polar poPolar;
-        poPolar.radius := norm(psPos);
+        poPolar.radius := VectMagn(psPos);
         IF poPolar.radius < 1e-9 THEN
             RETURN [0,0,poPolar.radius];
         ENDIF
