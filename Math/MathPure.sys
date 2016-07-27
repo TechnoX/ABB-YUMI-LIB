@@ -89,7 +89,7 @@ MODULE MathPure(SYSMODULE,NOVIEW)
     !*                                                        *
     !* IN:           A dnum array                             *
     !*                                                        *
-    !* RETURN:       num: The L2 norm (euclidian length) of   *
+    !* RETURN:       dnum: The L2 norm (euclidian length) of  *
     !*                    the array                           *
     !*                                                        *
     !* Date:        Version:   Programmer:          Reason:   *
@@ -101,6 +101,30 @@ MODULE MathPure(SYSMODULE,NOVIEW)
             sum:=sum+a{i}*a{i};
         ENDFOR
         RETURN SqrtDnum(sum);
+    ENDFUNC
+
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: NormNum                                 *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  Return the L2 norm of an array           *
+    !*                                                        *
+    !* IN:           A num array                             *
+    !*                                                        *
+    !* RETURN:       num: The L2 norm (euclidian length) of   *
+    !*                    the array                           *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-27   1.0        Fredrik Lofgren      created   *
+    !**********************************************************
+    FUNC num NormNum(num a{*})
+        VAR num sum;
+        FOR i FROM 1 TO Dim(a,1) DO
+            sum:=sum+a{i}*a{i};
+        ENDFOR
+        RETURN Sqrt(sum);
     ENDFUNC
 
 
