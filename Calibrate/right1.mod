@@ -119,12 +119,10 @@ MODULE MainModule
     
     
     LOCAL PROC getExtSAndU(pose peRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*})
-!        VAR pose peTemp;
         VAR pixel pxFirstMarker;
         VAR pixel pxSecondMarker;
         VAR robtarget pFirstTarget;
         VAR robtarget pSecondTarget;
-        VAR Pos psRelativeMovement;
         VAR bool bFound;
         CONST pixel pxTargets{nPoints2} := [[                1.5*nMargin , pxImageSize.v/2             , nScales{2}],
                                             [pxImageSize.u - 1.5*nMargin , pxImageSize.v/2             , nScales{2}],
@@ -134,8 +132,8 @@ MODULE MainModule
                                             [pxImageSize.u - 1.5*nMargin ,                 1.5*nMargin , nScales{3}],
                                             [                1.5*nMargin ,                 1.5*nMargin , nScales{3}],
                                             [pxImageSize.u - 1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{3}]];
-        ! Euler angles, given as pos: x,y,z
-        VAR pos angleTargets{nPoints2/2} := [[30,0,0],[0,30,0],[0,0,30],[20,20,0]];
+        ! Euler angles, expressed as pos: x,y,z
+        VAR pos angleTargets{nPoints2/2} := [[25,0,0],[0,50,0],[0,0,20],[25,25,0]];
         VAR orient orAngle;
         CONST num decreaseFactor := 0.75;
         
@@ -143,19 +141,15 @@ MODULE MainModule
             RAISE ERR_ILLDIM;
         ENDIF
         
-       
+        
         ! Loop through all good points to look at
         FOR i FROM 1 TO Dim(angleTargets,1) DO
             lbFirstMarker:
             ! Look for first marker, decrease the angle until it appears in sight
             bFound := FALSE;
             WHILE NOT bFound DO
-                !peTemp := PoseMult([[0,0,0],pStart.rot], [[0,0,0],OrientZYX(angleTargets{i}.z, angleTargets{i}.y, angleTargets{i}.x)]);
-                
                 orAngle := OrientZYX(angleTargets{i}.z, angleTargets{i}.y, angleTargets{i}.x);
                 
-                ! TODO: Should NOT affect pStart, should pass the rotation to placeMarkerAtPixel function as optional argument instead. 
-                !pStart.rot := peTemp.rot;
                 bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \peRob2Cam:=peRob2Cam, \angle:=orAngle);
                 IF NOT bFound THEN
                     TPWrite "Can't see! Decrease angle";
@@ -166,26 +160,18 @@ MODULE MainModule
             ENDWHILE
             pFirstTarget := getCurrentRobtarget();
             TPWrite "First position done for target "\Num:=i;
-            WaitTime 2;
             
             ! Move to the next point and hope it is also visible at this rotation, if not we need to decrease the angle and go back
-            ! NOTE: When going to next point we are not using the pixel values directly from above, because we need to move to it in the same Z-plane as the last point! 
-            !peTemp := pixel2pose(pxTargets{2*i},pxPreOffset, nPreTransform);
-            
-            
-            ! TODO: psRelativeMovement is here in the robot coordinate system, but MoveInCameraFrame wants a relative displacement in the camera frame system... 
-            ! TODO: IS WORKING HERE!!!
-            !psRelativeMovement := peTemp.trans - pFirstTarget.trans;
-            !MoveInCameraFramePlane pFirstTarget, [psRelativeMovement, [1,0,0,0]], peRob2Cam;
+            ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.  
             IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \peRob2Cam:=peRob2Cam, \bRestrictZ:=TRUE, \angle:=orAngle) THEN
                 TPWrite "Ohh noes! Can't see the marker at the second position";
                 ! Decrease angle
                 angleTargets{i} := angleTargets{i} * decreaseFactor;
+                ! TODO: Fix so this not enters an infinite loop. This translation should be skipped after N tries. 
                 GOTO lbFirstMarker;
             ENDIF
             pSecondTarget := getCurrentRobtarget();
             TPWrite "Second position done for target "\Num:=i;
-            WaitTime 2;
             
             ! Saves these positions
             !TPWrite "Saves pixel "\Num:=i;
@@ -198,27 +184,6 @@ MODULE MainModule
         
         Stop \AllMoveTasks;
     ENDPROC
-    
-    
-    LOCAL FUNC pose pixel2pose(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*})
-        VAR num nRelPixelTarget{3};
-        VAR num nCoords{3};
-        VAR pos psRelPos;
-        VAR robtarget pTarget;
-        
-        nRelPixelTarget{1} := pxTarget.u - pxCalibOffset.u;
-        nRelPixelTarget{2} := pxTarget.v - pxCalibOffset.v;
-        nRelPixelTarget{3} := pxTarget.scale - pxCalibOffset.scale;
-        
-        MatrixMultiply2 nTransform, nRelPixelTarget, nCoords;
-        psRelPos.x := nCoords{1};
-        psRelPos.y := nCoords{2};
-        psRelPos.z := nCoords{3};
-        
-        pTarget := Offs(pStart, psRelPos.x,psRelPos.y,psRelPos.z);
-        RETURN [pTarget.trans,pTarget.rot];
-    ENDFUNC
-    
     
     
     
