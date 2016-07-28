@@ -39,6 +39,9 @@ MODULE MainModule
     
     PROC main()
         VAR orient orRob2Cam;
+        VAR pos psCHat2Rob;
+        VAR pose peRob2Cam;
+        VAR pose peWrist2Marker;
         VAR dnum dnK{3,3};
         VAR dnum dnKInv{3,3};
         VAR num   nKInv{3,3};
@@ -56,7 +59,7 @@ MODULE MainModule
         
         
         ! Phase one of the paper
-        !calibIntrinsicAndRotation orRob2Cam, dnK, dnKinv;
+        !calibIntrinsicAndRotation orRob2Cam, psCHat2Rob, dnK, dnKinv;
         orRob2Cam := [0.459742,-0.523948,-0.49912,-0.514777];
         dnK := [[1678.42804821599,0.45137927995488,659.149972953566],[0,1674.83407370495,502.644040759519],[0,0,1]];
         dnKinv := [[0.000595795572567382,-1.60570996714238E-07,-0.392637925489027],[0,0.000597074071814093,-0.300115724089375],[0,0,1]];
@@ -65,7 +68,12 @@ MODULE MainModule
         
         dnumMatrix2numMatrix dnKinv, nKInv;
         ! Phase two and three of the paper
-        calibExtrinsic orRob2Cam, nKInv;
+        calibExtrinsic orRob2Cam, nKInv, peRob2Cam;
+        
+        ! The translation C-hat to C is the same as the translation Wrist to Marker, in compliance with Fig. 6, on page 5 of paper
+        peWrist2Marker.trans := psCHat2Rob + peRob2Cam.trans;        
+        ! Just the identity matrix for rotation, as indicated on page 2 of paper. 
+        peWrist2Marker.rot := [1,0,0,0];
         
         
         Stop \AllMoveTasks;
@@ -94,7 +102,7 @@ MODULE MainModule
     
     
     ! Phase two and three of the paper
-    LOCAL PROC calibExtrinsic(orient orRob2Cam, num nKInv{*,*})
+    LOCAL PROC calibExtrinsic(orient orRob2Cam, num nKInv{*,*}, INOUT pose peRob2Cam)
         ! The pixel where the first marker was detected (during precalibration)
         VAR pixel pxPreOffset;
         ! The precalibration transform, used to place the logo at specific coordinates in the image
@@ -133,6 +141,10 @@ MODULE MainModule
         TPWrite "Done with phase 2";
         
         SolveHandEyeEquation nNumPoints, orRob2Cam, peRob2Wrist, psCam2Marker, psRob2Cam;
+        
+        peRob2Cam.rot := orRob2Cam;
+        peRob2Cam.trans := psRob2Cam;
+        
         
     ENDPROC
     
@@ -393,7 +405,8 @@ MODULE MainModule
     
     
     ! Whole phase one of the paper.
-    LOCAL PROC calibIntrinsicAndRotation(INOUT orient orRob2Cam, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*},\switch print)
+    ! psCHat2Rob == The translation from C-hat to robot frame. This is actually the translation from Camera to Robot frame MINUS the translation from marker to wrist. 
+    LOCAL PROC calibIntrinsicAndRotation(INOUT orient orRob2Cam, INOUT pos psCHat2Rob, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*},\switch print)
         ! The pixel where the first marker was detected (during precalibration)
         VAR pixel pxCalibOffset;
         ! The precalibration transform, used to place the logo at specific coordinates in the image
@@ -410,10 +423,8 @@ MODULE MainModule
         VAR dnum dnR{3,3};
         ! The translation matrix, not correct values since it is calculated from the wrist
         VAR dnum dnT{3,1};
-        ! The transformation from camera frame to(2) robot frame. Only rotational part is valid!!
-        VAR pose peCam2Rob;
-        ! The transformation from robot to camera frame. Only rotational part is valid!
-        VAR pose peRob2Cam;
+        ! The rotation from camera frame to robot frame. Only rotational part is valid!!
+        VAR orient orCam2Rob;
         
         
         ! Check dimensions of input arguments
@@ -443,7 +454,9 @@ MODULE MainModule
             ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
             Stop;
         ENDIF
-        createPoseFromRAndT dnR, dnT, peCam2Rob;
+        createPoseFromRAndT dnR, dnT, orCam2Rob, psCHat2Rob;
+
+        ! TODO: Analyze dnP before PMatDecompQR beforehand to select positive or negative sign?? So we don't need to check if the axes coincide. 
         
         ! If the axis was wrong, change direction of Z-axis
         IF NOT axesCoincide(peCam2rob, psS, pxU) THEN
@@ -451,7 +464,7 @@ MODULE MainModule
                 ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
                 Stop;
             ENDIF
-            createPoseFromRAndT dnR, dnT, peCam2Rob;
+            createPoseFromRAndT dnR, dnT, orCam2Rob, psCHat2Rob;
             
             ! If they still don't coincide, something is broken! 
             IF NOT axesCoincide(peCam2rob, psS, pxU) THEN
@@ -459,25 +472,18 @@ MODULE MainModule
                 Stop;
             ENDIF
         ENDIF
-
-        ! TODO: Analyze dnP before PMatDecompQR beforehand to select positive or negative sign?? So we don't need to check if the axes coincide. 
         
         
         ! Return the inverse transform, from robot base to camera coordinate system
-        peRob2Cam:=PoseInv(peCam2Rob);
-        
-        
         ! NOTE: This is called Rext in the paper! 
-        orRob2Cam := peRob2Cam.rot;
-        ! Note that only the R part of peRobTCam is correct so far! 
+        orRob2Cam:=QuatInv(orCam2Rob);
         
-        ! TODO: SHOULD ONLYE RETURN THE ROTATION PART SO NO ONE IS USING THE WRONG PART OF IT!
         
         ! TODO: Refine calibration result with non linear optimization, including distortion
         !CalibIntNonLin psS,psU,nNumPoses,peRob2Cam,dnK;
         
         
-        ! Returns and peRobTCam and K (and Kinv) values. Done with phase one.  
+        ! Returns psCHat2Rob, orRob2Cam and K (and Kinv) values. Done with phase one.  
     ENDPROC
     
     LOCAL PROC printP(num nNumPoses, dnum dnP{*,*}, pos psS{*}, pixel pxU{*})
@@ -500,7 +506,7 @@ MODULE MainModule
     
     
     
-    LOCAL FUNC bool axesCoincide(pose peCam2Rob, pos psS{*}, pixel pxU{*})
+    LOCAL FUNC bool axesCoincide(orient orCam2Rob, pos psS{*}, pixel pxU{*})
         VAR num d12;
         VAR num d13;
         VAR num Zsign;
@@ -513,9 +519,9 @@ MODULE MainModule
         ENDIF
         
         !Check if "pixel" values match x,y axis of camera wobj
-        ps1:=PoseVect([[0,0,0],peCam2Rob.rot],[psS{1}.x,psS{1}.y,psS{1}.z]);
-        ps2:=PoseVect([[0,0,0],peCam2Rob.rot],[psS{2}.x,psS{2}.y,psS{2}.z]);
-        ps3:=PoseVect([[0,0,0],peCam2Rob.rot],[psS{3}.x,psS{3}.y,psS{3}.z]);
+        ps1:=PoseVect([[0,0,0],orCam2Rob],[psS{1}.x,psS{1}.y,psS{1}.z]);
+        ps2:=PoseVect([[0,0,0],orCam2Rob],[psS{2}.x,psS{2}.y,psS{2}.z]);
+        ps3:=PoseVect([[0,0,0],orCam2Rob],[psS{3}.x,psS{3}.y,psS{3}.z]);
         ps1.z:=0;
         ps2.z:=0;
         ps3.z:=0;
@@ -539,7 +545,7 @@ MODULE MainModule
     
     
     
-    LOCAL PROC createPoseFromRAndT(dnum dnR{*,*}, dnum dnT{*,*}, INOUT pose peCam2Rob)
+    LOCAL PROC createPoseFromRAndT(dnum dnR{*,*}, dnum dnT{*,*}, INOUT orient orCam2Rob, INOUT pos psCHat2Rob)
         VAR pos ps1;
         VAR pos ps2;
         VAR pos ps3;
@@ -554,10 +560,10 @@ MODULE MainModule
         ps3.x:=dnumtonum(dnR{1,3});
         ps3.y:=dnumtonum(dnR{2,3});
         ps3.z:=dnumtonum(dnR{3,3});
-        peCam2Rob.rot:=vec2quat(ps1,ps2,ps3);
+        orCam2Rob:=vec2quat(ps1,ps2,ps3);
         
         ! Create translation vector
-        peCam2Rob.trans:=[dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
+        psCHat2Rob := [dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
     ENDPROC
     
 
