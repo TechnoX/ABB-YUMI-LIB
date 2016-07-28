@@ -97,11 +97,15 @@ MODULE MainModule
         VAR pixel pxPreOffset;
         ! The precalibration transform, used to place the logo at specific coordinates in the image
         VAR num nPreTransform{3,3};
-
-        VAR Pose peS{nPoints2};
+        ! This is called S_ext in the paper on page 5. 
+        VAR Pose peRob2Wrist{nPoints2};
+        ! This is called U_ext in the paper on page 5.
         VAR pixel pxU{nPoints2};
-        VAR pos psT{nPoints2};
+        ! Called ct in paper
+        VAR pos psCam2Marker{nPoints2};
         VAR num nNumPoints;
+        ! Called t_ext in paper
+        VAR pos psRob2Cam;
         
         IF Dim(nKInv,1) <> 3 OR Dim(nKInv,2) <> 3 THEN
             RAISE ERR_ILLDIM;
@@ -115,43 +119,47 @@ MODULE MainModule
         !nPreTransform := [[0.107571,-0.000195339,-0.0928939],[-0.00078892,0.107814,0.242419],[0.00451787,-0.00350462,-1.7709]];
         !pxPreOffset := [679.272,261.089,60.6785];
         
-        getExtSAndU orRob2Cam, pxPreOffset, nPreTransform, peS, pxU;
+        getExtSAndU orRob2Cam, pxPreOffset, nPreTransform, peRob2Wrist, pxU;
         ! TODO: Should not use nPoints2 but instead a number returned from getExtSAndU that indicates the number of valid elements of S and U
         nNumPoints := nPoints2;
         
         ! Equation (14) and (15) in paper
-        getPointsInCameraFrame nNumPoints, peS, pxU, nKinv, psT;
+        getPointsInCameraFrame nNumPoints, peRob2Wrist, pxU, nKinv, psCam2Marker;
         
         
         ! Part three!! 
         TPWrite "Done with phase 2";
         
-        SolveHandEyeEquation nNumPoints, peRob2Cam, peS, psT;
+        SolveHandEyeEquation nNumPoints, orRob2Cam, peRob2Wrist, psCam2Marker, psRob2Cam;
         
     ENDPROC
     
     
-    LOCAL PROC SolveHandEyeEquation(num nNumPoses, pose peRob2Cam, pose peS{*}, pos psT{*})
+    LOCAL PROC SolveHandEyeEquation(num nNumPoses, orient orRob2Cam, pose peRob2Wrist{*}, pos psCam2Marker{*}, INOUT pos psRob2Cam)
         VAR pose peCam2Marker{nPoints2};
         createCam2Marker nNumPoses, peRob2Cam, peS, psT, peCam2Marker;
     ENDPROC
     
     
     ! Augment the position data from the camera to include orientation, assigning the same orientation to the calibration marker as measured for the robot wrist
-    LOCAL PROC createCam2Marker(num nNumPoses, pose peRob2Cam, pose peS{*}, pos psT{*}, INOUT pose peCam2Marker{*})
-        VAR pose peCam2Rob;
-        peCam2Rob := PoseInv(peRob2Cam);
+    LOCAL PROC createCam2Marker(num nNumPoses, orient orRob2Cam, pose peRob2Wrist{*}, pos psCam2Marker{*}, INOUT pose peCam2Marker{*})
+        VAR orient orCam2Rob;
+        VAR orient orCam2Wrist;
+        
+        orCam2Rob := QuatInv(orRob2Cam);
         FOR i FROM 1 TO nNumPoses DO
-            peCam2Marker{i}.rot := peCam2Rob.rot * peS{i}.rot;
-            peCam2Marker{i}.trans := psT{i};
+            ! TODO: Can you just multiply two quaternions and get correct result? :S
+            orCam2Wrist := orCam2Rob * peRob2Wrist{i}.rot;
+            peCam2Marker{i}.rot := orCam2Wrist;
+            peCam2Marker{i}.trans := psCam2Marker{i};
         ENDFOR
     ENDPROC
         
     ! Equation (14) and (15) in paper
-    LOCAL PROC getPointsInCameraFrame(num nNumPoses, pose peS{*}, pixel pxU{*}, num nKinv{*,*}, INOUT pos psT{*})
+    LOCAL PROC getPointsInCameraFrame(num nNumPoses, pose peRob2Wrist{*}, pixel pxU{*}, num nKinv{*,*}, INOUT pos psCam2Marker{*})
         VAR num nDistance; 
         
-        IF Dim(peS,1) < nNumPoses OR Dim(pxU,1) < nNumPoses OR Dim(psT,1) < nNumPoses THEN
+        IF Dim(peRob2Wrist,1) < nNumPoses OR Dim(pxU,1) < nNumPoses OR Dim(psCam2Marker,1) < nNumPoses THEN
             RAISE ERR_ILLDIM;
         ENDIF
         
@@ -160,12 +168,12 @@ MODULE MainModule
             
             ! Get distance. Equation (14)
             ! TODO: Take several readings and do a mean value of them. Three was used for each height, in the old code...
-            nDistance := getDistanceToCam(nKinv, peS{2*i-1}.trans, peS{2*i}.trans, 
-                                                 pxU{2*i-1},       pxU{2*i});
+            nDistance := getDistanceToCam(nKinv, peRob2Wrist{2*i-1}.trans, peRob2Wrist{2*i}.trans, 
+                                                         pxU{2*i-1},               pxU{2*i});
 
             ! Project the pixel back to a 3D coordinate, equation (15) 
-            psT{2*i-1} := backProjectPixel(pxU{2*i-1}, nKInv, nDistance);
-            psT{2*i}   := backProjectPixel(pxU{2*i},   nKInv, nDistance);
+            psCam2Marker{2*i-1} := backProjectPixel(pxU{2*i-1}, nKInv, nDistance);
+            psCam2Marker{2*i}   := backProjectPixel(pxU{2*i},   nKInv, nDistance);
             
         ENDFOR
     ENDPROC
@@ -307,7 +315,7 @@ MODULE MainModule
         VAR num nTransform{3,3};
         ! The number of detected markers, the m value in the paper
         VAR num nNumPoses;
-        ! The first S dataset, from paper
+        ! The first S dataset, from paper. Should maybe be called psRob2Wrist???
         VAR pos psS{nMaxPoints};
         ! The first U dataset, from paper
         VAR pixel pxU{nMaxPoints};
