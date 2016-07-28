@@ -27,6 +27,8 @@ MODULE MainModule
     ! The number of points used for second phase (reorientations), this is number 2*n in the paper
     ! Needs to be even for obvious reasons (n is an integer).
     LOCAL CONST num nPoints2:=8;
+    ! Maximum number of pairs in (18) - (22).
+    LOCAL CONST num nMaxPairs := 15;
     
     !LOCAL PERS num transform{3,3} := [[0.00734952,-0.186346,0.0676703],   [0.0166307,0.00824375,4.93447],   [-0.186678,-0.00741658,-0.0260662]];
     
@@ -137,7 +139,90 @@ MODULE MainModule
     
     LOCAL PROC SolveHandEyeEquation(num nNumPoses, orient orRob2Cam, pose peRob2Wrist{*}, pos psCam2Marker{*}, INOUT pos psRob2Cam)
         VAR pose peCam2Marker{nPoints2};
-        createCam2Marker nNumPoses, peRob2Cam, peS, psT, peCam2Marker;
+        ! A in the paper on p. 6 (TODO: Should be given a more descriptive name)
+        ! Wrist movement (in robot frame) between two images
+        VAR pose peA{nMaxPairs};
+        ! B in the paper on p. 6 (TODO: Should be given a more descriptive name)
+        ! Marker movement (in camera frame) between two images
+        VAR pose peB{nMaxPairs};
+        ! Number of pairs used to solve the hand eye equation
+        CONST num nNumPairs:=6;
+        ! Maybe take nPairs as an argument?? As it depends on the number of avaliable images/poses and may vary... 
+        CONST num nPairs{nNumPairs,2} := [[1,2],[1,2],[1,2],[1,2],[1,2],[1,2]];
+        
+        
+        ! Equation (17)
+        createCam2Marker nNumPoses, orRob2Cam, peRob2Wrist, psCam2Marker, peCam2Marker;
+        
+        ! Equation (18) and (19)
+        createAB nNumPairs, nPairs, peRob2Wrist, peCam2Marker, peA, peB;
+        
+        ! Equation (22)
+        getTExt nNumPairs, orRob2Cam, peA, peB, psRob2Cam;
+        
+        
+    ENDPROC
+
+    
+    ! psRob2Cam is denoted t_ext in the paper
+    LOCAL PROC getTExt(num nNumPairs, orient orRext, pose peA{*}, pose peB{*}, INOUT pos psText)
+        VAR dnum dnLeftMatrix{3*nMaxPairs,3};
+        VAR dnum dnRightMatrix{3*nMaxPairs};
+        VAR num nT{3,1};
+        VAR num nTempA{4,4};
+        VAR pose peRight;
+        VAR dnum dnRob2Cam{3};
+
+        IF Dim(peA,1) < nNumPairs OR  Dim(peB,1) < nNumPairs THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        
+        ! Create the matrixes for the equation system (22)
+        FOR p FROM 1 TO nNumPairs DO
+            
+            ! Create left side matrix
+            posetoxform peA{p}, nTempA;
+            FOR r FROM 1 TO 3 DO
+                FOR c FROM 1 TO 3 DO
+                    IF r = c THEN
+                        dnLeftMatrix{3*p + r - 3, c} := NumToDnum(nTempA{r,c} - 1);
+                    ELSE
+                        dnLeftMatrix{3*p + r - 3, c} := NumToDnum(nTempA{r,c});
+                    ENDIF
+                ENDFOR
+            ENDFOR
+            
+            ! Create right side matrix
+            ! Rext * tB
+            peRight := PoseMult([[0,0,0],orRext], [peB{p}.trans,[1,0,0,0]]);
+            ! result from above minus tA
+            peRight := PoseMult(peRight, [-peA{p}.trans,[1,0,0,0]]);
+            
+            dnRightMatrix{3*p - 2} := NumToDnum(peRight.trans.x);
+            dnRightMatrix{3*p - 1} := NumToDnum(peRight.trans.y);
+            dnRightMatrix{3*p - 0} := NumToDnum(peRight.trans.z);
+        ENDFOR
+        
+        ! Solve the equation using least squares
+        MatrixSolve dnLeftMatrix\A_m:=3*nNumPairs\A_n:=3,dnRightMatrix,dnRob2Cam;
+        
+        
+        psText.x := DnumToNum(dnRob2Cam{1});
+        psText.y := DnumToNum(dnRob2Cam{2});
+        psText.z := DnumToNum(dnRob2Cam{3});
+        
+    ENDPROC
+    
+    
+    LOCAL PROC createAB(num nNumPairs, num nPairs{*,*}, pose peRob2Wrist{*}, pose peCam2Marker{*}, INOUT pose peA{*}, INOUT pose peB{*})
+        
+        
+        FOR i FROM 1 TO nNumPairs DO
+            peA{i} := PoseMult(peRob2Wrist{nPairs{i,1}}, PoseInv(peRob2Wrist{nPairs{i,2}}));
+            peB{i} := PoseMult(peCam2Marker{nPairs{i,1}}, PoseInv(peCam2Marker{nPairs{i,2}}));
+        ENDFOR
+        
+        
     ENDPROC
     
     
