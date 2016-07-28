@@ -1322,4 +1322,19 @@ MODULE MathPure(SYSMODULE,NOVIEW)
         ENDFOR
     ENDPROC
     
+    FUNC num QuatNorm(orient in)
+        RETURN Sqrt(in.q1*in.q1+in.q2*in.q2+in.q3*in.q3+in.q4*in.q4);
+    ENDFUNC
+    
+    FUNC orient QuatInv(orient in)
+        VAR orient out;
+        VAR num length; 
+        length := QuatNorm(in);
+        out.q1 := in.q1 / length;
+        out.q2 := -in.q2 / length;
+        out.q3 := -in.q3 / length;
+        out.q4 := -in.q4 / length;
+        RETURN out;
+    ENDFUNC
+    
 ENDMODULE
