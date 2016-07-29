@@ -209,7 +209,7 @@ MODULE MainModule
             ! Rext * tB
             peRight := PoseMult([[0,0,0],orRext], [peB{p}.trans,[1,0,0,0]]);
             ! result from above minus tA
-            peRight := PoseMult(peRight, [-peA{p}.trans,[1,0,0,0]]);
+            peRight.trans := peRight.trans - peA{p}.trans;! := PoseMult([peRight.trans,[1,0,0,0]], [-peA{p}.trans,[1,0,0,0]]);
             
             dnRightMatrix{3*p - 2} := NumToDnum(peRight.trans.x);
             dnRightMatrix{3*p - 1} := NumToDnum(peRight.trans.y);
