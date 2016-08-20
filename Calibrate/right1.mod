@@ -69,7 +69,7 @@ MODULE MainModule
         calibExtrinsic orRob2Cam, nKInv, peRob2Cam;
         
         ! The translation C-hat to C is the same as the translation Wrist to Marker, in compliance with Fig. 6, on page 5 of paper
-        peWrist2Marker.trans := psCHat2Rob + peRob2Cam.trans;        
+        peWrist2Marker.trans := peRob2Cam.trans - psRob2CHat;
         ! Just the identity matrix for rotation, as indicated on page 2 of paper. 
         peWrist2Marker.rot := [1,0,0,0];
         
