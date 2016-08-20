@@ -39,7 +39,7 @@ MODULE MainModule
     
     PROC main()
         VAR orient orRob2Cam;
-        VAR pos psCHat2Rob;
+        VAR pos psRob2CHat;
         VAR pose peRob2Cam;
         VAR pose peWrist2Marker;
         VAR dnum dnK{3,3};
@@ -60,10 +60,7 @@ MODULE MainModule
         
         
         ! Phase one of the paper
-        !calibIntrinsicAndRotation orRob2Cam, psCHat2Rob, dnK, dnKinv;
-        orRob2Cam := [0.459742,-0.523948,-0.49912,-0.514777];
-        dnK := [[1678.42804821599,0.45137927995488,659.149972953566],[0,1674.83407370495,502.644040759519],[0,0,1]];
-        dnKinv := [[0.000595795572567382,-1.60570996714238E-07,-0.392637925489027],[0,0.000597074071814093,-0.300115724089375],[0,0,1]];
+        calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv, \print;
         
         TPWrite "Done with part 1";
         
@@ -407,7 +404,7 @@ MODULE MainModule
     
     ! Whole phase one of the paper.
     ! psCHat2Rob == The translation from C-hat to robot frame. This is actually the translation from Camera to Robot frame MINUS the translation from marker to wrist. 
-    LOCAL PROC calibIntrinsicAndRotation(INOUT orient orRob2Cam, INOUT pos psCHat2Rob, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*},\switch print)
+    LOCAL PROC calibIntrinsicAndRotation(INOUT orient orRob2Cam, INOUT pos psRob2CHat, INOUT dnum dnK{*,*}, INOUT dnum dnKinv{*,*},\switch print)
         ! The pixel where the first marker was detected (during precalibration)
         VAR pixel pxPreOffset;
         ! The precalibration transform, used to place the logo at specific coordinates in the image
@@ -424,8 +421,10 @@ MODULE MainModule
         VAR dnum dnR{3,3};
         ! The translation matrix, not correct values since it is calculated from the wrist
         VAR dnum dnT{3,1};
-        ! Translation from CHat2Rob in Chat coordinate system (I think...)
-        VAR pose peTestar;
+        ! Translation from CHat to robot in CHat coordinate system (I think...)
+        VAR pose peRob2CHat;
+        ! Translation from Robot to CHat in robot coordinate system
+        VAR pose peCHat2Rob;
         
         ! Check dimensions of input arguments
         IF DIM(dnK,1) <> 3 OR DIM(dnK,2) <> 3 OR DIM(dnKinv,1) <> 3 OR DIM(dnKinv,2) <> 3 THEN
@@ -455,20 +454,20 @@ MODULE MainModule
             Stop;
         ENDIF
         ! Split this into two calls, one for R and another for R. They are not affecting each other. 
-        createPoseFromRAndT dnR, dnT, peTestar;
+        createPoseFromRAndT dnR, dnT, peCHat2Rob;
         
         ! TODO: Analyze dnP before PMatDecompQR beforehand to select positive or negative sign?? So we don't need to check if the axes coincide afterwards. 
         
         ! If the axis was wrong, change direction of Z-axis
-        IF NOT axesCoincide(peTestar.rot, psRob2Wrist, pxU) THEN
+        IF NOT axesCoincide(peCHat2Rob.rot, psRob2Wrist, pxU) THEN
             IF NOT PMatDecompQR(dnPHat,dnK,dnKinv,dnR,dnT,-1) THEN 
                 ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
                 Stop;
             ENDIF
-            createPoseFromRAndT dnR, dnT, peTestar;
+            createPoseFromRAndT dnR, dnT, peCHat2Rob;
             
             ! If they still don't coincide, something is broken! 
-            IF NOT axesCoincide(peTestar.rot, psRob2Wrist, pxU) THEN
+            IF NOT axesCoincide(peCHat2Rob.rot, psRob2Wrist, pxU) THEN
                 ErrWrite "calibIntrinsicAndRotation","Unable to match sign of axes";
                 Stop;
             ENDIF
@@ -485,10 +484,10 @@ MODULE MainModule
         !orRob2Cam:=QuatInv(orCam2Rob); ! Don't do it here, it will be done below within PoseInv()
         
         ! NOTE: Important to also invert the translation part, otherwise it gives the Rob position in the CHat coordinate system (rotated and translated)
-        peTestar := PoseInv(peTestar);
+        peRob2CHat := PoseInv(peCHat2Rob);
         
-        orRob2Cam := peTestar.rot;
-        psCHat2Rob := peTestar.trans;
+        orRob2Cam := peRob2CHat.rot;
+        psRob2CHat := peRob2CHat.trans;
         
         ! TODO: Refine calibration result with non linear optimization, including distortion
         !CalibIntNonLin psS,psU,nNumPoses,peRob2Cam,dnK;
