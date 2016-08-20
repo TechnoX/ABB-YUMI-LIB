@@ -837,7 +837,7 @@ MODULE MainModule
         ! If detected at wrong position in the image, we are discarding this detection
         nDist := getPixelDistance(pxDetectedMarker, pxTarget);
         !TPWrite "Pixel distance: "\Num:=nDist;
-        IF nDist > 200 THEN
+        IF nDist > nMaxDistance THEN
             TPWrite "Marker detected at wrong location in image!! "\Num:=nDist;
             RETURN FALSE;
         ENDIF
