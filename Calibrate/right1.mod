@@ -28,7 +28,7 @@ MODULE MainModule
     ! Needs to be even for obvious reasons (n is an integer).
     LOCAL CONST num nPoints2:=8;
     ! Maximum number of pairs in (18) - (22).
-    LOCAL CONST num nMaxPairs := 15;
+    LOCAL CONST num nMaxPairs := 6;
     
     !LOCAL PERS num transform{3,3} := [[0.00734952,-0.186346,0.0676703],   [0.0166307,0.00824375,4.93447],   [-0.186678,-0.00741658,-0.0260662]];
     
@@ -155,7 +155,8 @@ MODULE MainModule
         ! Number of pairs used to solve the hand eye equation
         CONST num nNumPairs:=6;
         ! Maybe take nPairs as an argument?? As it depends on the number of avaliable images/poses and may vary... 
-        CONST num nPairs{nNumPairs,2} := [[1,2],[1,2],[1,2],[1,2],[1,2],[1,2]];
+        CONST num nPairs{nNumPairs,2} := [[1,3],[2,4],[7,6],[3,8],[3,8],[1,6]];
+        !!!!!!  TODO: Pair 4 and 5 are the same!! Fix it! 
         
         
         ! Equation (17)
