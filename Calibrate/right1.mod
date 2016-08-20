@@ -159,6 +159,7 @@ MODULE MainModule
         
         
         ! Equation (17)
+        ! TODO: Refactor this up one level to the function before, i.e. inside getPointsInCameraFrame. I think it belongs more there...
         createCam2Marker nNumPoses, orRob2Cam, peRob2Wrist, psCam2Marker, peCam2Marker;
         
         ! Equation (18) and (19)
@@ -167,7 +168,7 @@ MODULE MainModule
         ! Equation (22)
         getTExt nNumPairs, orRob2Cam, peA, peB, psRob2Cam;
         
-        
+        TPWrite "Done with part 3";
     ENDPROC
 
     
@@ -240,8 +241,8 @@ MODULE MainModule
         
         orCam2Rob := QuatInv(orRob2Cam);
         FOR i FROM 1 TO nNumPoses DO
-            ! TODO: Can you just multiply two quaternions and get correct result? :S
             orCam2Wrist := orCam2Rob * peRob2Wrist{i}.rot;
+            ! Set the marker coordinate system to the same as the wrist have. 
             peCam2Marker{i}.rot := orCam2Wrist;
             peCam2Marker{i}.trans := psCam2Marker{i};
         ENDFOR
@@ -1022,6 +1023,7 @@ MODULE MainModule
             TPWrite "Could not find the target";
             RETURN FALSE;
         ELSEIF ERRNO=ERR_CAM_COM_TIMEOUT THEN
+            TPWrite "Camera communication timeout";
             WaitTime 2.0;
             RETRY;
         ENDIF
