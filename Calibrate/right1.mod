@@ -347,7 +347,7 @@ MODULE MainModule
             WHILE NOT bFound DO
                 orAngle := OrientZYX(angleTargets{i}.z, angleTargets{i}.y, angleTargets{i}.x);
                 
-                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \orRob2Cam:=orRob2Cam, \angle:=orAngle);
+                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \orRob2Cam:=orRob2Cam, \angle:=orAngle\nMaxDistance:=400);
                 IF NOT bFound THEN
                     TPWrite "Can't see! Decrease angle";
                     ! Decrease angle
@@ -360,7 +360,7 @@ MODULE MainModule
             
             ! Move to the next point and hope it is also visible at this rotation, if not we need to decrease the angle and go back
             ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.  
-            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \bRestrictZ:=TRUE, \angle:=orAngle) THEN
+            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \bRestrictZ:=TRUE, \angle:=orAngle\nMaxDistance:=400) THEN
                 TPWrite "Ohh noes! Can't see the marker at the second position";
                 ! Decrease angle
                 angleTargets{i} := angleTargets{i} * decreaseFactor;
@@ -779,7 +779,7 @@ MODULE MainModule
         ! Loop through all good points to look at
         FOR px FROM 1 TO DIM(pxGoodPointsToVisit,1) DO
             ! If the marker is visible from this point (and point is reachable)
-            IF placeMarkerAtPixel(pxGoodPointsToVisit{px}, pxCalibOffset, nTransform, pxDetectedMarker) THEN
+            IF placeMarkerAtPixel(pxGoodPointsToVisit{px}, pxCalibOffset, nTransform, pxDetectedMarker\nMaxDistance:=220) THEN
                 temp := getCurrentRobtarget();
                 psS{nIndex} := temp.trans;
                 TPWrite "Saves pixel "\Num:=px;
@@ -811,13 +811,16 @@ MODULE MainModule
     
     ! If restrictZ = True, don't move the hand anything along the Z axis. 
     ! angle: Optional angle to turn the wrist to.
-    LOCAL FUNC bool placeMarkerAtPixel(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*}, INOUT pixel pxDetectedMarker, \orient orRob2Cam, \bool bRestrictZ, \orient angle)
+    LOCAL FUNC bool placeMarkerAtPixel(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*}, INOUT pixel pxDetectedMarker, \orient orRob2Cam, \bool bRestrictZ, \orient angle,\num nMaxDistance)
         VAR num nCoords{3}; 
         VAR pos psRelPos;
         VAR num nRelPixelTarget{3};
-        ! Max distance to be considered a true detection
-        CONST num nMaxDistance := 200; 
         VAR num nDist;
+        
+        ! Max distance to be considered a true detection
+        IF NOT Present(nMaxDistance) THEN
+            nMaxDistance := 200; 
+        ENDIF
         
         nRelPixelTarget{1} := pxTarget.u - pxCalibOffset.u;
         nRelPixelTarget{2} := pxTarget.v - pxCalibOffset.v;
