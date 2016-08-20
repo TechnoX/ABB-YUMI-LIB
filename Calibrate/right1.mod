@@ -424,9 +424,8 @@ MODULE MainModule
         VAR dnum dnR{3,3};
         ! The translation matrix, not correct values since it is calculated from the wrist
         VAR dnum dnT{3,1};
-        ! The rotation from camera frame to robot frame. Only rotational part is valid!!
-        VAR orient orCam2Rob;
-        
+        ! Translation from CHat2Rob in Chat coordinate system (I think...)
+        VAR pose peTestar;
         
         ! Check dimensions of input arguments
         IF DIM(dnK,1) <> 3 OR DIM(dnK,2) <> 3 OR DIM(dnKinv,1) <> 3 OR DIM(dnKinv,2) <> 3 THEN
@@ -455,20 +454,21 @@ MODULE MainModule
             ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
             Stop;
         ENDIF
-        createPoseFromRAndT dnR, dnT, orCam2Rob, psCHat2Rob;
-
-        ! TODO: Analyze dnP before PMatDecompQR beforehand to select positive or negative sign?? So we don't need to check if the axes coincide. 
+        ! Split this into two calls, one for R and another for R. They are not affecting each other. 
+        createPoseFromRAndT dnR, dnT, peTestar;
+        
+        ! TODO: Analyze dnP before PMatDecompQR beforehand to select positive or negative sign?? So we don't need to check if the axes coincide afterwards. 
         
         ! If the axis was wrong, change direction of Z-axis
-        IF NOT axesCoincide(orCam2Rob, psRob2Wrist, pxU) THEN
+        IF NOT axesCoincide(peTestar.rot, psRob2Wrist, pxU) THEN
             IF NOT PMatDecompQR(dnPHat,dnK,dnKinv,dnR,dnT,-1) THEN 
                 ErrWrite "calibIntrinsicAndRotation", "Wrong matrix dimension";
                 Stop;
             ENDIF
-            createPoseFromRAndT dnR, dnT, orCam2Rob, psCHat2Rob;
+            createPoseFromRAndT dnR, dnT, peTestar;
             
             ! If they still don't coincide, something is broken! 
-            IF NOT axesCoincide(orCam2Rob, psRob2Wrist, pxU) THEN
+            IF NOT axesCoincide(peTestar.rot, psRob2Wrist, pxU) THEN
                 ErrWrite "calibIntrinsicAndRotation","Unable to match sign of axes";
                 Stop;
             ENDIF
@@ -477,8 +477,13 @@ MODULE MainModule
         
         ! Return the inverse transform, from robot base to camera coordinate system
         ! NOTE: This is called Rext in the paper! 
-        orRob2Cam:=QuatInv(orCam2Rob);
+        !orRob2Cam:=QuatInv(orCam2Rob); ! Don't do it here, it will be done below within PoseInv()
         
+        ! NOTE: Important to also invert the translation part, otherwise it gives the Rob position in the CHat coordinate system (rotated and translated)
+        peTestar := PoseInv(peTestar);
+        
+        orRob2Cam := peTestar.rot;
+        psCHat2Rob := peTestar.trans;
         
         ! TODO: Refine calibration result with non linear optimization, including distortion
         !CalibIntNonLin psS,psU,nNumPoses,peRob2Cam,dnK;
@@ -551,7 +556,7 @@ MODULE MainModule
     
     
     
-    LOCAL PROC createPoseFromRAndT(dnum dnR{*,*}, dnum dnT{*,*}, INOUT orient orCam2Rob, INOUT pos psCHat2Rob)
+    LOCAL PROC createPoseFromRAndT(dnum dnR{*,*}, dnum dnT{*,*}, INOUT pose pePose)
         VAR pos ps1;
         VAR pos ps2;
         VAR pos ps3;
@@ -566,10 +571,10 @@ MODULE MainModule
         ps3.x:=dnumtonum(dnR{1,3});
         ps3.y:=dnumtonum(dnR{2,3});
         ps3.z:=dnumtonum(dnR{3,3});
-        orCam2Rob:=vec2quat(ps1,ps2,ps3);
+        pePose.rot := vec2quat(ps1,ps2,ps3);
         
         ! Create translation vector
-        psCHat2Rob := [dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
+        pePose.trans := [dnumtonum(dnT{1,1}),dnumtonum(dnT{2,1}),dnumtonum(dnT{3,1})];
     ENDPROC
     
 
