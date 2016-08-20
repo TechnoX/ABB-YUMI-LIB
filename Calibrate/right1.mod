@@ -124,9 +124,6 @@ MODULE MainModule
         ! Find an initial transformation from pixel coordinates to world coordinates
         preCalibration nPreTransform, pxPreOffset,\orRob2Cam:=orRob2Cam;
         
-        !nPreTransform := [[0.107571,-0.000195339,-0.0928939],[-0.00078892,0.107814,0.242419],[0.00451787,-0.00350462,-1.7709]];
-        !pxPreOffset := [679.272,261.089,60.6785];
-        
         getExtSAndU orRob2Cam, pxPreOffset, nPreTransform, peRob2Wrist, pxU;
         ! TODO: Should not use nPoints2 but instead a number returned from getExtSAndU that indicates the number of valid elements of S and U
         nNumPoints := nPoints2;
@@ -1033,6 +1030,3 @@ MODULE MainModule
     
     
 ENDMODULE
-
-
-
