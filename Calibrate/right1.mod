@@ -474,6 +474,11 @@ MODULE MainModule
             ENDIF
         ENDIF
         
+        IF Present(print) THEN
+            !Check that PmatdecompQR return values indeed compose P, P=K*[R t]
+            checkP dnPhat, dnK, dnR, dnT;
+        ENDIF
+        
         
         ! Return the inverse transform, from robot base to camera coordinate system
         ! NOTE: This is called Rext in the paper! 
@@ -490,6 +495,17 @@ MODULE MainModule
         
         
         ! Returns psCHat2Rob, orRob2Cam and K (and Kinv) values. Done with phase one.  
+    ENDPROC
+    
+    !Check that PmatdecompQR return values indeed compose P, P=K*[R t]
+    LOCAL PROC checkP(dnum dnP{*,*}, dnum dnK{*,*}, dnum dnR{*,*}, dnum dnT{*,*})
+        VAR dnum dnP_test{3,4};
+        
+        MatrixMultiplyDnum dnK,[[dnR{1,1},dnR{1,2},dnR{1,3},dnT{1,1}],[dnR{2,1},dnR{2,2},dnR{2,3},dnT{2,1}],[dnR{3,1},dnR{3,2},dnR{3,3},dnT{3,1}]],dnP_test;
+        TPWrite "P Error=";
+        FOR i FROM 1 TO 3 DO
+            TPWrite "["+dnumtostr(dnP{i,1}-dnP_test{i,1},3)+","+dnumtostr(dnP{i,2}-dnP_test{i,2},3)+","+dnumtostr(dnP{i,3}-dnP_test{i,3},3)+","+dnumtostr(dnP{i,4}-dnP_test{i,4},3)+"]";
+        ENDFOR
     ENDPROC
     
     LOCAL PROC printP(num nNumPoses, dnum dnP{*,*}, pos psRob2Wrist{*}, pixel pxU{*})
