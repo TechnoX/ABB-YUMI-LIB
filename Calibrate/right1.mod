@@ -60,7 +60,12 @@ MODULE MainModule
         
         
         ! Phase one of the paper
-        calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv, \print;
+        !calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv;
+        orRob2Cam := [0.573205,0.397208,0.431512,0.57224];
+        psRob2CHat := [155.257,24.6881,66.2292];
+        dnK := [[1649.52212675067,-2.14907467250056,635.975918352858],[0,1640.33360150003,498.794668040982],[0,0,1]];
+        dnKinv := [[0.000606236184275903,7.94257234009788E-07,-0.385947785306977],[0,0.000609632088915044,-0.30408123541751],[0,0,1]];
+        
         
         TPWrite "Done with part 1";
         
