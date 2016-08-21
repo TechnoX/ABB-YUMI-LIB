@@ -478,15 +478,15 @@ MODULE MainModule
     
     ! Moves to a relative position (translation) in the camera frame
     ! With an optional rotation of the wrist relative origin rotation (maybe relative camera rotation instead?!??).
-    LOCAL PROC MoveInCameraFramePlane(robtarget origin, pos relativeMovement, orient orRob2Cam, \orient angle)
+    LOCAL PROC MoveInCameraFramePlane(pos relativeMovement, orient orRob2Cam, \orient angle)
         VAR robtarget pTarget;
         VAR Pose peTemp;
-        pTarget := origin;
-        peTemp := PoseMult([origin.trans, orRob2Cam], [relativeMovement,[1,0,0,0]]);
+        pTarget := pStart;
+        peTemp := PoseMult([pStart.trans, orRob2Cam], [relativeMovement,[1,0,0,0]]);
         pTarget.trans := peTemp.trans;
         IF present(angle) THEN
             
-            peTemp := PoseMult([[0,0,0],origin.rot], [[0,0,0],angle]);
+            peTemp := PoseMult([[0,0,0],pStart.rot], [[0,0,0],angle]);
             pTarget.rot := peTemp.rot;
         ENDIF
         Move(pTarget);
@@ -894,7 +894,7 @@ MODULE MainModule
         ENDIF
         
         ! Image coords from the original marker (that is at the "pStart" position)
-        bDummy := getMarkerInfoAtPos(pStart, [0,0,0], offset, \orRob2Cam?orRob2Cam);
+        bDummy := getMarkerInfoAtPos([0,0,0], offset, \orRob2Cam?orRob2Cam);
         
         calculateMovementTransform nTransform, \orRob2Cam?orRob2Cam;
         invert3x3Matrix nTransform, transform;
@@ -934,7 +934,7 @@ MODULE MainModule
         ENDIF
         
         ! If not detected at all
-        IF NOT getMarkerInfoAtPos(pStart, psRelPos, pxDetectedMarker, \orRob2Cam?orRob2Cam, \angle?angle) THEN
+        IF NOT getMarkerInfoAtPos(psRelPos, pxDetectedMarker, \orRob2Cam?orRob2Cam, \angle?angle) THEN
             TPWrite "Marker not detected! Not saved!";
             RETURN FALSE;
         ENDIF
@@ -996,24 +996,24 @@ MODULE MainModule
         
         TEST nDirection
             CASE DIRECTION_X:
-                WHILE NOT getMarkerInfoAtPos(pStart,[nPositiveDistance,0,0], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
+                WHILE NOT getMarkerInfoAtPos([nPositiveDistance,0,0], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
                     nPositiveDistance := nDecreaseFactor * nPositiveDistance;
                 ENDWHILE
-                WHILE NOT getMarkerInfoAtPos(pStart,[-nNegativeDistance,0,0], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
+                WHILE NOT getMarkerInfoAtPos([-nNegativeDistance,0,0], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
                     nNegativeDistance := nDecreaseFactor * nNegativeDistance;
                 ENDWHILE
             CASE DIRECTION_Y:
-                WHILE NOT getMarkerInfoAtPos(pStart,[0,nPositiveDistance,0], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
+                WHILE NOT getMarkerInfoAtPos([0,nPositiveDistance,0], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
                     nPositiveDistance := nDecreaseFactor * nPositiveDistance;
                 ENDWHILE
-                WHILE NOT getMarkerInfoAtPos(pStart,[0,-nNegativeDistance,0], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
+                WHILE NOT getMarkerInfoAtPos([0,-nNegativeDistance,0], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
                     nNegativeDistance := nDecreaseFactor * nNegativeDistance;
                 ENDWHILE
             CASE DIRECTION_Z:
-                WHILE NOT getMarkerInfoAtPos(pStart,[0,0,nPositiveDistance], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
+                WHILE NOT getMarkerInfoAtPos([0,0,nPositiveDistance], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
                     nPositiveDistance := nDecreaseFactor * nPositiveDistance;
                 ENDWHILE
-                WHILE NOT getMarkerInfoAtPos(pStart,[0,0,-nNegativeDistance], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
+                WHILE NOT getMarkerInfoAtPos([0,0,-nNegativeDistance], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
                     nNegativeDistance := nDecreaseFactor * nNegativeDistance;
                 ENDWHILE
             DEFAULT: 
@@ -1065,20 +1065,20 @@ MODULE MainModule
         WaitDO doLogoIsMoving,0;
     ENDPROC
     
-    LOCAL PROC moveToPos(robtarget pStartPos, pos psRelPos)
+    LOCAL PROC moveToPos(pos psRelPos)
         VAR robtarget pTarget;
         ! Moves the robot to a new target
-        pTarget := Offs(pStartPos, psRelPos.x,psRelPos.y,psRelPos.z);
+        pTarget := Offs(pStart, psRelPos.x,psRelPos.y,psRelPos.z);
         
         Move(pTarget);
     ENDPROC
     
     ! If bResctrictZ = true, don't move the hand anything along Z-axis
-    LOCAL FUNC bool getMarkerInfoAtPos(robtarget pStartPos, pos psRelPos, INOUT pixel detectedMarker, \orient orRob2Cam, \orient angle)
+    LOCAL FUNC bool getMarkerInfoAtPos(pos psRelPos, INOUT pixel detectedMarker, \orient orRob2Cam, \orient angle)
         IF Present(orRob2Cam) THEN
-            MoveInCameraFramePlane pStartPos, psRelPos, orRob2Cam, \angle?angle;
+            MoveInCameraFramePlane psRelPos, orRob2Cam, \angle?angle;
         ELSE
-            moveToPos pStartPos, psRelPos;
+            moveToPos psRelPos;
         ENDIF
         IF NOT getMarkerInfo(detectedMarker) THEN
             RETURN FALSE;
