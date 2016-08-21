@@ -37,14 +37,18 @@ MODULE MainModule
     
         
     
+    
+    
+    ! This is for the example code in main(), not used by the calibration routines themselves.  
+    PERS tooldata tMarker := [TRUE, [[0, 0, 0], [1, 0, 0, 0]],
+                             [0.001, [0, 0, 0.001],[1, 0, 0, 0], 0, 0, 0]];
+    PERS tooldata tCamera := [TRUE, [[0, 0, 0], [1, 0, 0, 0]],
+                             [0.001, [0, 0, 0.001],[1, 0, 0, 0], 0, 0, 0]];
+    PERS wobjdata wCamera := [FALSE, TRUE, "", [[0, 0, 0],[1, 0, 0, 0]],
+                             [[0, 0, 0],[1, 0, 0, 0]]];
+    PERS dnum dnK{3,3} :=    [[1640,0,640],[0,1640,480],[0,0,1]];
+
     PROC main()
-        VAR orient orRob2Cam;
-        VAR pos psRob2CHat;
-        VAR pose peRob2Cam;
-        VAR pose peWrist2Marker;
-        VAR dnum dnK{3,3};
-        VAR dnum dnKInv{3,3};
-        VAR num   nKInv{3,3};
         
         
         ! Moves to a initial position with correct configuration. 
@@ -53,11 +57,96 @@ MODULE MainModule
         ! Wait for other task
         WaitTime 1;
         ! TOOD: Use WaitSyncTask to be sure the other arm is standing still after its MoveAbsJ instruction
+        
+        ! Important that both arms have been moved to their initial positions before you call one of the routines below. 
+        
+        ! Run ONE of the below examples
+        !CalibrateExternalCamera wCamera, tMarker, dnK;
+        CalibrateHandCamera tCamera, tMarker, dnK;
+        !CalibrateHandCamera tCamera, tMarker, dnK, \moveCamera;
+        
+        
+        Stop \AllMoveTasks;
+    ENDPROC
+
+    
+    ! Calibrate a fix camera (for example a camrea fixture above yumi). Movable marker 
+    ! Needs the marker to be fasten to a movable arm, which is visible in the view in the beginning
+    ! Resultatet ska vara en wobj för kamerans extrinsiska parametrar, samt en tcp eller tooldata för markören. 
+    PROC CalibrateExternalCamera(INOUT wobjdata wCamera, INOUT tooldata tMarker, INOUT dnum dnK{*,*})
+        VAR pose peRob2Cam;
+        VAR pose peWrist2Marker;
+        IF DIM(dnK,1) <> 3 OR Dim(dnK,2) <> 3 THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        
+        TPWrite "Calibrate fix camera rig";
+        
         pStart := getCurrentRobtarget();
         
         ! Setup camera device
         setUpCameraDevice; 
         
+        bMoveThisArm := TRUE;
+        CalibrateInternal peRob2Cam, peWrist2Marker, dnK;
+        
+        tMarker.robhold := TRUE;
+        tMarker.tframe := peWrist2Marker;
+        tMarker.tload := [0.001, peWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
+        
+        wCamera.robhold := FALSE;
+        wCamera.ufprog := TRUE;
+        
+        wCamera.uframe := peRob2Cam;
+        wCamera.oframe := [[0,0,0],[1,0,0,0]];
+    ENDPROC
+
+    ! Calibrate a HandHeld Camera. 
+    ! Move camera or move Calibration marker. Default is to move calibration marker. 
+    PROC CalibrateHandCamera(INOUT tooldata tCamera, INOUT tooldata tMarker, INOUT dnum dnK{*,*}, \switch moveCamera)
+        VAR pose peRob2Cam;
+        VAR pose peWrist2Marker;
+        VAR pose peWrist2Cam;
+        VAR pose peWrist2Rob;
+        
+        IF DIM(dnK,1) <> 3 OR Dim(dnK,2) <> 3 THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        
+        TPWrite "Calibrate hand held camera";
+        IF Present(moveCamera) THEN
+            TPWrite "While moving the camera";
+            bMoveThisArm := TRUE;
+        ELSE
+            TPWrite "While moving the calibration marker";
+            bMoveThisArm := FALSE;
+        ENDIF
+        
+        pStart := getCurrentRobtarget();
+        
+        ! Setup camera device
+        setUpCameraDevice; 
+        
+        CalibrateInternal peRob2Cam, peWrist2Marker, dnK;
+
+        peWrist2Rob := PoseInv([pStart.trans, pStart.rot]);
+        peWrist2Cam := PoseMult(peWrist2Rob, peRob2Cam);
+        
+        tMarker.robhold := TRUE;
+        tMarker.tframe := peWrist2Marker;
+        tMarker.tload := [0.001, peWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
+        
+        tCamera.robhold := TRUE;
+        tCamera.tframe := peWrist2Cam;
+        tCamera.tload := [0.001, peWrist2Cam.trans, [1, 0, 0, 0], 0, 0, 0];
+    ENDPROC
+    
+    
+    LOCAL PROC CalibrateInternal(INOUT pose peRob2Cam, INOUT pose peWrist2Marker, INOUT dnum dnK{*,*})
+        VAR orient orRob2Cam;
+        VAR pos psRob2CHat;
+        VAR dnum dnKInv{3,3};
+        VAR num  nKInv{3,3};
         
         ! Phase one of the paper
         !calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv;
@@ -77,9 +166,6 @@ MODULE MainModule
         peWrist2Marker.trans := peRob2Cam.trans - psRob2CHat;
         ! Just the identity matrix for rotation, as indicated on page 2 of paper. 
         peWrist2Marker.rot := [1,0,0,0];
-        
-        
-        Stop \AllMoveTasks;
         
 	ENDPROC
     
