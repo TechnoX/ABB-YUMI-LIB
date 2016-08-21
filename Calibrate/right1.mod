@@ -320,6 +320,7 @@ MODULE MainModule
         VAR pixel pxSecondMarker;
         VAR robtarget pFirstTarget;
         VAR robtarget pSecondTarget;
+        VAR pos psFirstRelPos;
         VAR bool bFound;
         CONST pixel pxTargets{nPoints2} := [[                1.5*nMargin , pxImageSize.v/2             , nScales{2}],
                                             [pxImageSize.u - 1.5*nMargin , pxImageSize.v/2             , nScales{2}],
@@ -347,7 +348,7 @@ MODULE MainModule
             WHILE NOT bFound DO
                 orAngle := OrientZYX(angleTargets{i}.z, angleTargets{i}.y, angleTargets{i}.x);
                 
-                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \orRob2Cam:=orRob2Cam, \angle:=orAngle\nMaxDistance:=400);
+                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \psMovedToRelPos:=psFirstRelPos, \orRob2Cam:=orRob2Cam, \angle:=orAngle, \nMaxDistance:=400);
                 IF NOT bFound THEN
                     TPWrite "Can't see! Decrease angle";
                     ! Decrease angle
@@ -360,7 +361,7 @@ MODULE MainModule
             
             ! Move to the next point and hope it is also visible at this rotation, if not we need to decrease the angle and go back
             ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.  
-            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \bRestrictZ:=TRUE, \angle:=orAngle\nMaxDistance:=400) THEN
+            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \nFixZ:=psFirstRelPos.z, \angle:=orAngle, \nMaxDistance:=400) THEN
                 TPWrite "Ohh noes! Can't see the marker at the second position";
                 ! Decrease angle
                 angleTargets{i} := angleTargets{i} * decreaseFactor;
@@ -811,7 +812,7 @@ MODULE MainModule
     
     ! If restrictZ = True, don't move the hand anything along the Z axis. 
     ! angle: Optional angle to turn the wrist to.
-    LOCAL FUNC bool placeMarkerAtPixel(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*}, INOUT pixel pxDetectedMarker, \orient orRob2Cam, \bool bRestrictZ, \orient angle,\num nMaxDistance)
+    LOCAL FUNC bool placeMarkerAtPixel(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*}, INOUT pixel pxDetectedMarker,\INOUT pos psMovedToRelPos, \orient orRob2Cam, \num nFixZ, \orient angle,\num nMaxDistance)
         VAR num nCoords{3}; 
         VAR pos psRelPos;
         VAR num nRelPixelTarget{3};
@@ -830,9 +831,19 @@ MODULE MainModule
         psRelPos.x := nCoords{1};
         psRelPos.y := nCoords{2};
         psRelPos.z := nCoords{3};
+        IF Present(nFixZ) THEN
+            ! Restrict the z movement to the specified parameter. 
+            TPWrite "Restricts Z!!!";
+            psRelPos.z := nFixZ;
+        ENDIF
+        
+        ! psMovedToRelPos is an output parameter, that if it exist should return the position where we moved. 
+        IF Present(psMovedToRelPos) THEN
+            psMovedToRelPos := psRelPos;
+        ENDIF
         
         ! If not detected at all
-        IF NOT getMarkerInfoAtPos(pStart, psRelPos, pxDetectedMarker, \orRob2Cam?orRob2Cam,\bRestrictZ?bRestrictZ, \angle?angle) THEN
+        IF NOT getMarkerInfoAtPos(pStart, psRelPos, pxDetectedMarker, \orRob2Cam?orRob2Cam, \angle?angle) THEN
             TPWrite "Marker not detected! Not saved!";
             RETURN FALSE;
         ENDIF
@@ -972,13 +983,8 @@ MODULE MainModule
     ENDPROC
     
     ! If bResctrictZ = true, don't move the hand anything along Z-axis
-    LOCAL FUNC bool getMarkerInfoAtPos(robtarget pStartPos, pos psRelPos, INOUT pixel detectedMarker, \orient orRob2Cam, \bool bRestrictZ, \orient angle)
+    LOCAL FUNC bool getMarkerInfoAtPos(robtarget pStartPos, pos psRelPos, INOUT pixel detectedMarker, \orient orRob2Cam, \orient angle)
         IF Present(orRob2Cam) THEN
-            IF Present(bRestrictZ) AND bRestrictZ THEN
-                ! Restrict the z movement to 0. 
-                TPWrite "Restricts Z!!!";
-                psRelPos.z := 0;
-            ENDIF
             MoveInCameraFramePlane pStartPos, psRelPos, orRob2Cam, \angle?angle;
         ELSE
             moveToPos pStartPos, psRelPos;
