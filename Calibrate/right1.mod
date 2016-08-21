@@ -11,9 +11,11 @@ MODULE MainModule
     LOCAL CONST num DIRECTION_Y:=1;
     LOCAL CONST num DIRECTION_Z:=2;
     
-    LOCAL CONST bool bMoveCamera := FALSE;
     ! The general speed used during calibration
     LOCAL CONST speeddata vSpeed := v400;
+    ! True of moving the this arm, false if moving the other arm
+    LOCAL VAR bool bMoveThisArm := FALSE;
+    ! The camera to be used.
     LOCAL VAR cameradev cameraToUse;
     
     
@@ -171,9 +173,10 @@ MODULE MainModule
     
     
     LOCAL FUNC robtarget getCurrentRobtarget()
-        IF bMoveCamera THEN
+        IF bMoveThisArm THEN
             RETURN CRobT(\Tool:=tool0,\WObj:=wobj0);
         ELSE
+            ! TODO: Fix this to work for both left and right arm. 
             RETURN CRobT(\TaskName:="T_ROB_L",\Tool:=tool0,\WObj:=wobj0);
         ENDIF
     ENDFUNC
@@ -645,7 +648,8 @@ MODULE MainModule
         d12:=DotProd(NormalizePos(ps2-ps1),NormalizePos([pxU{2}.u,pxU{2}.v,0]-[pxU{1}.u,pxU{1}.v,0]));
         d13:=DotProd(NormalizePos(ps3-ps1),NormalizePos([pxU{3}.u,pxU{3}.v,0]-[pxU{1}.u,pxU{1}.v,0]));
         !0.05 for poorly calibrated robot, 0.01 for properly calibrated robot
-        IF bMoveCamera THEN
+        ! TODO: Check this for external fixed camera, it may be incorrect now....  I'm unsure about what this checks actually. 
+        IF bMoveThisArm THEN 
             Zsign:=-1;
         ELSE
             Zsign:=1;
@@ -1041,14 +1045,14 @@ MODULE MainModule
     
 
     LOCAL PROC Move(robtarget pTarget)
-        IF bMoveCamera THEN
-            MoveCamera(pTarget);
+        IF bMoveThisArm THEN
+            MoveThisArm(pTarget);
         ELSE
-            MoveLogo(pTarget);
+            MoveOtherArm(pTarget);
         ENDIF
     ENDPROC
     
-    LOCAL PROC MoveCamera(robtarget pTarget)
+    LOCAL PROC MoveThisArm(robtarget pTarget)
         VAR jointtarget jtDummy;
         ! This is not used anywhere, just to throw error if position is not reachable. The error thrown by MoveL didn't seem catchable
         jtDummy := CalcJointT(pTarget, tool0, \WObj:=wobj0);
@@ -1059,7 +1063,7 @@ MODULE MainModule
         RETURN;
     ENDPROC
 
-    LOCAL PROC MoveLogo(robtarget pTarget)
+    LOCAL PROC MoveOtherArm(robtarget pTarget)
         pLogoTarget:=pTarget;
         SetDO doLogoIsMoving,1;
         WaitDO doLogoIsMoving,0;
