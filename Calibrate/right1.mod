@@ -24,11 +24,11 @@ MODULE MainModule
     LOCAL CONST num nScales{3} := [90, 70, 50];
     
     ! Can't handle more than 18 points because of some arbitrary limit inside MatrixSVD. "Report the problem to ABB Robotics"
-    LOCAL CONST num nMaxPoints:=18;
+    ! This is the maximum value for m in the paper.
+    LOCAL CONST num nMaxIntPoints:=18;
+    ! This is the maximum value for 2*n in the paper. Must be even for obv reasons. 
+    LOCAL CONST num nMaxExtPoints:=8;
     
-    ! The number of points used for second phase (reorientations), this is number 2*n in the paper
-    ! Needs to be even for obvious reasons (n is an integer).
-    LOCAL CONST num nPoints2:=8;
     ! Maximum number of pairs in (18) - (22).
     LOCAL CONST num nMaxPairs := 6;
     
@@ -200,12 +200,15 @@ MODULE MainModule
         ! The precalibration transform, used to place the logo at specific coordinates in the image
         VAR num nPreTransform{3,3};
         ! This is called S_ext in the paper on page 5. 
-        VAR Pose peRob2Wrist{nPoints2};
+        VAR Pose peRob2Wrist{nMaxExtPoints};
         ! This is called U_ext in the paper on page 5.
-        VAR pixel pxU{nPoints2};
+        VAR pixel pxU{nMaxExtPoints};
         ! Called ct in paper
-        VAR pos psCam2Marker{nPoints2};
+        VAR pos psCam2Marker{nMaxExtPoints};
+        ! The number of points used for second phase (reorientations), this is number 2*n in the paper
+        ! Needs to be even for obvious reasons (n is an integer).
         VAR num nNumPoints;
+
         ! Called t_ext in paper
         VAR pos psRob2Cam;
         
@@ -218,9 +221,7 @@ MODULE MainModule
         ! Find an initial transformation from pixel coordinates to world coordinates
         preCalibration nPreTransform, pxPreOffset,\orRob2Cam:=orRob2Cam;
         
-        getExtSAndU orRob2Cam, pxPreOffset, nPreTransform, peRob2Wrist, pxU;
-        ! TODO: Should not use nPoints2 but instead a number returned from getExtSAndU that indicates the number of valid elements of S and U
-        nNumPoints := nPoints2;
+        getExtSAndU orRob2Cam, pxPreOffset, nPreTransform, peRob2Wrist, pxU, nNumPoints;
         
         ! Equation (14) and (15) in paper
         getPointsInCameraFrame nNumPoints, peRob2Wrist, pxU, nKinv, psCam2Marker;
@@ -239,17 +240,17 @@ MODULE MainModule
     
     
     LOCAL PROC SolveHandEyeEquation(num nNumPoses, orient orRob2Cam, pose peRob2Wrist{*}, pos psCam2Marker{*}, INOUT pos psRob2Cam)
-        VAR pose peCam2Marker{nPoints2};
+        VAR pose peCam2Marker{nMaxExtPoints};
         ! A in the paper on p. 6 (TODO: Should be given a more descriptive name)
         ! Wrist movement (in robot frame) between two images
         VAR pose peA{nMaxPairs};
         ! B in the paper on p. 6 (TODO: Should be given a more descriptive name)
         ! Marker movement (in camera frame) between two images
         VAR pose peB{nMaxPairs};
-        ! Number of pairs used to solve the hand eye equation
-        CONST num nNumPairs:=6;
+        ! Number of pairs used to solve the hand eye equation, number of valid elements of nPairs. 
+        VAR num nNumPairs := 6;
         ! Maybe take nPairs as an argument?? As it depends on the number of avaliable images/poses and may vary... 
-        CONST num nPairs{nNumPairs,2} := [[1,3],[2,4],[7,6],[3,8],[3,8],[1,6]];
+        CONST num nPairs{nMaxPairs,2} := [[1,3],[2,4],[7,6],[3,8],[3,8],[1,6]];
         !!!!!!  TODO: Pair 4 and 5 are the same!! Fix it! 
         
         
@@ -409,14 +410,14 @@ MODULE MainModule
         RETURN nDistance;
     ENDFUNC
     
-    LOCAL PROC getExtSAndU(orient orRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*})
+    LOCAL PROC getExtSAndU(orient orRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints)
         VAR pixel pxFirstMarker;
         VAR pixel pxSecondMarker;
         VAR robtarget pFirstTarget;
         VAR robtarget pSecondTarget;
         VAR pos psFirstRelPos;
         VAR bool bFound;
-        CONST pixel pxTargets{nPoints2} := [[                1.5*nMargin , pxImageSize.v/2             , nScales{2}],
+        CONST pixel pxTargets{nMaxExtPoints} := [[              1.5*nMargin , pxImageSize.v/2             , nScales{2}],
                                             [pxImageSize.u - 1.5*nMargin , pxImageSize.v/2             , nScales{2}],
                                             [pxImageSize.u/2             ,                 1.5*nMargin , nScales{2}],
                                             [pxImageSize.u/2             , pxImageSize.v - 1.5*nMargin , nScales{2}],
@@ -425,7 +426,7 @@ MODULE MainModule
                                             [                1.5*nMargin ,                 1.5*nMargin , nScales{3}],
                                             [pxImageSize.u - 1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{3}]];
         ! Euler angles, expressed as pos: x,y,z
-        VAR pos angleTargets{nPoints2/2} := [[25,0,0],[0,50,0],[0,0,20],[25,25,0]];
+        VAR pos angleTargets{nMaxExtPoints/2} := [[25,0,0],[0,50,0],[0,0,20],[25,25,0]];
         VAR orient orAngle;
         CONST num decreaseFactor := 0.75;
         
@@ -433,6 +434,8 @@ MODULE MainModule
             RAISE ERR_ILLDIM;
         ENDIF
         
+        ! This will increase everytime we add a new pose
+        nNumPoints := 0;
         
         ! Loop through all good points to look at
         FOR i FROM 1 TO Dim(angleTargets,1) DO
@@ -471,7 +474,8 @@ MODULE MainModule
             peS{2*i} := [pSecondTarget.trans, pSecondTarget.rot];
             pxU{2*i-1} := pxFirstMarker;
             pxU{2*i} := pxSecondMarker;
-            
+            ! Increase number of saved poses with 2. 
+            nNumPoints := nNumPoints + 2;
         ENDFOR
         
     ENDPROC
@@ -506,9 +510,9 @@ MODULE MainModule
         ! The number of detected markers, the m value in the paper
         VAR num nNumPoses;
         ! The first S dataset, from paper. Should maybe be called psRob2Wrist???
-        VAR pos psRob2Wrist{nMaxPoints};
+        VAR pos psRob2Wrist{nMaxIntPoints};
         ! The first U dataset, from paper
-        VAR pixel pxU{nMaxPoints};
+        VAR pixel pxU{nMaxIntPoints};
         ! The P matrix, from paper
         VAR dnum dnPhat{3,4};
         ! The rotation matrix
@@ -689,8 +693,8 @@ MODULE MainModule
     
 
     LOCAL PROC findP(num nNumPoses, pos psRob2Wrist{*}, pixel pxU{*}, INOUT dnum dnP{*,*})
-        VAR dnum dnMatrix{2*nMaxPoints,12};
-        VAR dnum dnU{2*nMaxPoints,12};
+        VAR dnum dnMatrix{2*nMaxIntPoints,12};
+        VAR dnum dnU{2*nMaxIntPoints,12};
         VAR dnum dnS{12};
         VAR dnum dnV{12,12};
         VAR num nMinIndexS;
@@ -848,7 +852,7 @@ MODULE MainModule
         VAR num nIndex := 1;
         VAR pixel pxDetectedMarker;
         VAR robtarget temp;
-        CONST pixel pxGoodPointsToVisit{nMaxPoints} := [[pxImageSize.u/2             , pxImageSize.v/2             , nScales{1}],
+        CONST pixel pxGoodPointsToVisit{nMaxIntPoints} := [[pxImageSize.u/2             , pxImageSize.v/2             , nScales{1}],
                                                           [                    nMargin ,                     nMargin , nScales{2}],
                                                           [pxImageSize.u/2             ,                 1.5*nMargin , nScales{2}],
                                                           [pxImageSize.u -     nMargin ,                     nMargin , nScales{2}],
