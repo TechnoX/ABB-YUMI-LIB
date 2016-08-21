@@ -11,13 +11,15 @@ MODULE MainModule
     LOCAL CONST num DIRECTION_Y:=1;
     LOCAL CONST num DIRECTION_Z:=2;
     
-    ! The general speed used during calibration
-    LOCAL CONST speeddata vSpeed := v400;
     ! True of moving the this arm, false if moving the other arm
     LOCAL VAR bool bMoveThisArm := FALSE;
     ! The camera to be used.
     LOCAL VAR cameradev cameraToUse;
+    ! The position of the movable wrist when the calibration routine starts
+    LOCAL VAR robtarget pStart;
     
+    ! The general speed used during calibration
+    LOCAL CONST speeddata vSpeed := v400;
     
     LOCAL CONST pixel pxImageSize := [1280,960,0];
     LOCAL CONST num nMargin := 200;
@@ -32,12 +34,9 @@ MODULE MainModule
     ! Maximum number of pairs in (18) - (22).
     LOCAL CONST num nMaxPairs := 6;
     
-    !LOCAL PERS num transform{3,3} := [[0.00734952,-0.186346,0.0676703],   [0.0166307,0.00824375,4.93447],   [-0.186678,-0.00741658,-0.0260662]];
-    
+    ! Used to pass position data between this and the other Motion Task for moving the other arm. 
     PERS robtarget pLogoTarget;
-    LOCAL VAR robtarget pStart;
     
-        
     
     
     
@@ -252,7 +251,6 @@ MODULE MainModule
         ! Maybe take nPairs as an argument?? As it depends on the number of avaliable images/poses and may vary... 
         CONST num nPairs{nMaxPairs,2} := [[1,3],[2,4],[7,6],[3,8],[3,8],[1,6]];
         !!!!!!  TODO: Pair 4 and 5 are the same!! Fix it! 
-        
         
         ! Equation (17)
         ! TODO: Refactor this up one level to the function before, i.e. inside getPointsInCameraFrame. I think it belongs more there...
