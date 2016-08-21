@@ -1108,7 +1108,7 @@ MODULE MainModule
 
         !TPWrite "Tries to take picture";
         WHILE nNoOffPicture < nMaxTries DO
-            IF NOT RequestImage(cameraToUse, psCameraResult) THEN
+            IF NOT RequestImage(psCameraResult) THEN
                 Incr nNoOffPicture;
                 TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
             ELSE
@@ -1118,10 +1118,10 @@ MODULE MainModule
         RETURN FALSE;
     ENDFUNC
 
-    LOCAL FUNC bool RequestImage(VAR cameradev cameraToUse, INOUT pixel px)
+    LOCAL FUNC bool RequestImage(INOUT pixel px)
         VAR cameratarget tgt;
-        CamReqImage CameraToUse;
-        CamGetResult CameraToUse,tgt\MaxTime:=5;
+        CamReqImage cameraToUse;
+        CamGetResult cameraToUse,tgt\MaxTime:=5;
         !WaitTime 2.0;
         px.u := tgt.cframe.trans.x;
         px.v := tgt.cframe.trans.y;
