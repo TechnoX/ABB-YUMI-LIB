@@ -457,7 +457,7 @@ MODULE MainModule
             WHILE NOT bFound DO
                 orAngle := OrientZYX(angleTargets{i}.z, angleTargets{i}.y, angleTargets{i}.x);
                 
-                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \psMovedToRelPos:=psFirstRelPos, \orRob2Cam:=orRob2Cam, \angle:=orAngle, \nMaxDistance:=400);
+                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \psMovedToRelPos:=psFirstRelPos, \orRob2Cam:=orRob2Cam, \angle:=orAngle, \nMaxDistance:=600);
                 IF NOT bFound THEN
                     TPWrite "Can't see! Decrease angle";
                     ! Decrease angle
@@ -470,7 +470,7 @@ MODULE MainModule
             
             ! Move to the next point and hope it is also visible at this rotation, if not we need to decrease the angle and go back
             ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.  
-            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \nFixZ:=psFirstRelPos.z, \angle:=orAngle, \nMaxDistance:=400) THEN
+            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \nFixZ:=psFirstRelPos.z, \angle:=orAngle, \nMaxDistance:=600) THEN
                 TPWrite "Ohh noes! Can't see the marker at the second position";
                 ! Decrease angle
                 angleTargets{i} := angleTargets{i} * decreaseFactor;
