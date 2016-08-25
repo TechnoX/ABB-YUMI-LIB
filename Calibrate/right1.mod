@@ -83,8 +83,6 @@ MODULE MainModule
         
         TPWrite "Calibrate fix camera rig";
         
-        pStart := getCurrentRobtarget();
-        
         ! Setup camera device
         setUpCameraDevice; 
         
@@ -125,8 +123,6 @@ MODULE MainModule
             TPWrite "While moving the calibration marker";
             bMoveThisArm := FALSE;
         ENDIF
-        
-        pStart := getCurrentRobtarget();
         
         ! Setup camera device
         setUpCameraDevice; 
