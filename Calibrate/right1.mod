@@ -595,7 +595,7 @@ MODULE MainModule
         
         ! NOTE: Important to also invert the translation part, otherwise it gives the Rob position in the CHat coordinate system (rotated and translated)
         peRob2CHat := PoseInv(peCHat2Rob);
-        
+        Move(pStart);
         orRob2Cam := peRob2CHat.rot;
         psRob2CHat := peRob2CHat.trans;
         
