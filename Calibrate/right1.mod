@@ -76,7 +76,7 @@ MODULE MainModule
     ! Resultatet ska vara en wobj för kamerans extrinsiska parametrar, samt en tcp eller tooldata för markören. 
     PROC CalibrateExternalCamera(INOUT wobjdata wCamera, INOUT tooldata tMarker, INOUT dnum dnK{*,*})
         VAR pose peRob2Cam;
-        VAR pose peWrist2Marker;
+        VAR pose peMarkerWrist2Marker;
         IF DIM(dnK,1) <> 3 OR Dim(dnK,2) <> 3 THEN
             RAISE ERR_ILLDIM;
         ENDIF
@@ -89,11 +89,11 @@ MODULE MainModule
         setUpCameraDevice; 
         
         bMoveThisArm := TRUE;
-        CalibrateInternal peRob2Cam, peWrist2Marker, dnK;
+        CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
         
         tMarker.robhold := TRUE;
-        tMarker.tframe := peWrist2Marker;
-        tMarker.tload := [0.001, peWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
+        tMarker.tframe := peMarkerWrist2Marker;
+        tMarker.tload := [0.001, peMarkerWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
         
         wCamera.robhold := FALSE;
         wCamera.ufprog := TRUE;
@@ -106,9 +106,12 @@ MODULE MainModule
     ! Move camera or move Calibration marker. Default is to move calibration marker. 
     PROC CalibrateHandCamera(INOUT tooldata tCamera, INOUT tooldata tMarker, INOUT dnum dnK{*,*}, \switch moveCamera)
         VAR pose peRob2Cam;
-        VAR pose peWrist2Marker;
-        VAR pose peWrist2Cam;
-        VAR pose peWrist2Rob;
+        ! Robtarget to the wrist that is holding the camera hand that is being calibrated
+        VAR robtarget pRob2CamWrist;
+        
+        VAR pose peMarkerWrist2Marker;
+        VAR pose peCamWrist2Cam;
+        VAR pose peCamWrist2Rob;
         
         IF DIM(dnK,1) <> 3 OR Dim(dnK,2) <> 3 THEN
             RAISE ERR_ILLDIM;
@@ -128,26 +131,34 @@ MODULE MainModule
         ! Setup camera device
         setUpCameraDevice; 
         
-        CalibrateInternal peRob2Cam, peWrist2Marker, dnK;
+        pRob2CamWrist := getCurrentRobtarget(\other);
+        CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
 
-        peWrist2Rob := PoseInv([pStart.trans, pStart.rot]);
-        peWrist2Cam := PoseMult(peWrist2Rob, peRob2Cam);
+        peCamWrist2Rob := PoseInv([pRob2CamWrist.trans, pRob2CamWrist.rot]);
+        peCamWrist2Cam := PoseMult(peCamWrist2Rob, peRob2Cam);
         
         tMarker.robhold := TRUE;
-        tMarker.tframe := peWrist2Marker;
-        tMarker.tload := [0.001, peWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
+        tMarker.tframe := peMarkerWrist2Marker;
+        tMarker.tload := [0.001, peMarkerWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
         
         tCamera.robhold := TRUE;
-        tCamera.tframe := peWrist2Cam;
-        tCamera.tload := [0.001, peWrist2Cam.trans, [1, 0, 0, 0], 0, 0, 0];
+        tCamera.tframe := peCamWrist2Cam;
+        tCamera.tload := [0.001, peCamWrist2Cam.trans, [1, 0, 0, 0], 0, 0, 0];
     ENDPROC
     
     
-    LOCAL PROC CalibrateInternal(INOUT pose peRob2Cam, INOUT pose peWrist2Marker, INOUT dnum dnK{*,*})
+    LOCAL PROC CalibrateInternal(INOUT pose peRob2Cam, INOUT pose peMarkerWrist2Marker, INOUT dnum dnK{*,*})
         VAR orient orRob2Cam;
         VAR pos psRob2CHat;
+        VAR pos psWrist2Marker;
+        VAR orient orMarkerWrist2Rob;
         VAR dnum dnKInv{3,3};
         VAR num  nKInv{3,3};
+        
+        ! Get the start position of the moving arm (either the camera or the marker, depending on bMoveThisArm)
+        pStart := getCurrentRobtarget();
+        ! TODO: Can't have pStart here if the camera is moving.... Important!
+        orMarkerWrist2Rob := QuatInv(pStart.rot);
         
         ! Phase one of the paper
         !calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv;
@@ -164,9 +175,13 @@ MODULE MainModule
         calibExtrinsic orRob2Cam, nKInv, peRob2Cam;
         
         ! The translation C-hat to C is the same as the translation Wrist to Marker, in compliance with Fig. 6, on page 5 of paper
-        peWrist2Marker.trans := peRob2Cam.trans - psRob2CHat;
+        ! This is the distance / transformation from wrist to marker, in the base robot coordinate system.
+        psWrist2Marker := peRob2Cam.trans - psRob2CHat;
+
+        ! Rotate it around to get the translation in the wrist coordinate system
+        peMarkerWrist2Marker.trans := PoseVect([[0,0,0],orMarkerWrist2Rob], psWrist2Marker);
         ! Just the identity matrix for rotation, as indicated on page 2 of paper. 
-        peWrist2Marker.rot := [1,0,0,0];
+        peMarkerWrist2Marker.rot := [1,0,0,0];
         
 	ENDPROC
     
