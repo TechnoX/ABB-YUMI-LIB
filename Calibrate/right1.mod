@@ -182,8 +182,11 @@ MODULE MainModule
 	ENDPROC
     
     
-    LOCAL FUNC robtarget getCurrentRobtarget()
-        IF bMoveThisArm THEN
+    ! Normally it returns the arm that is moving (sometimes it is the hand with marker, other times it is the one with the camera)
+    ! If you specify "other" you will get the robtarget for the stationary arm. 
+    LOCAL FUNC robtarget getCurrentRobtarget(\switch other)
+        IF Present(other) XOR bMoveThisArm THEN
+            TPWrite "Camera arm read position!";
             RETURN CRobT(\Tool:=tool0,\WObj:=wobj0);
         ELSE
             ! TODO: Fix this to work for both left and right arm. 
