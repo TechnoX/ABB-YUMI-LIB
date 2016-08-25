@@ -474,7 +474,7 @@ MODULE MainModule
                 TPWrite "Ohh noes! Can't see the marker at the second position";
                 ! Decrease angle
                 angleTargets{i} := angleTargets{i} * decreaseFactor;
-                ! TODO: Fix so this not enters an infinite loop. This translation should be skipped after N tries. 
+                ! TODO: Fix so this not enters an infinite loop. This translation should be skipped after N tries. Important!!
                 GOTO lbFirstMarker;
             ENDIF
             pSecondTarget := getCurrentRobtarget();
