@@ -41,13 +41,13 @@ MODULE MainModule
     
     
     ! This is for the example code in main(), not used by the calibration routines themselves.  
-    PERS tooldata tMarker := [TRUE, [[-5.98848, -30.9753, 34.0134], [1, 0, 0, 0]],
-                             [0.001, [-5.98848, -30.9753, 34.0134],[1, 0, 0, 0], 0, 0, 0]];
+    PERS tooldata tMarker := [TRUE, [[2.2139, -31.7831, 32.9929], [1, 0, 0, 0]],
+                             [0.001, [2.2139, -31.7831, 32.9929],[1, 0, 0, 0], 0, 0, 0]];
     PERS tooldata tCamera := [TRUE, [[-7.41233, 33.0536, 36.4786], [0.506138, -0.49621, -0.507202, -0.49025]],
                              [0.001, [-7.41233, 33.0536, 36.4786],[1, 0, 0, 0], 0, 0, 0]];
-    PERS wobjdata wCamera := [FALSE, TRUE, "", [[0, 0, 0],[1, 0, 0, 0]],
+    PERS wobjdata wCamera := [FALSE, TRUE, "", [[198.159, -82.9229, 535.612],[0.10768, 0.377052, 0.884889, 0.251413]],
                              [[0, 0, 0],[1, 0, 0, 0]]];
-    PERS dnum dnK{3,3} :=    [[1651.64457943905,2.7067486303924,635.846843454661],[0,1650.16449283532,492.43585718554],[0,0,1]];
+    PERS dnum dnK{3,3} :=    [[1644.31373064943,4.57558224542382,624.413837499637],[0,1649.76425831997,497.957508211329],[0,0,1]];
 
     PROC main()
         
@@ -62,8 +62,8 @@ MODULE MainModule
         ! Important that both arms have been moved to their initial positions before you call one of the routines below. 
         
         ! Run ONE of the below examples
-        !CalibrateExternalCamera wCamera, tMarker, dnK;
-        CalibrateHandCamera tCamera, tMarker, dnK;
+        CalibrateExternalCamera wCamera, tMarker, dnK;
+        !CalibrateHandCamera tCamera, tMarker, dnK;
         !CalibrateHandCamera tCamera, tMarker, dnK, \moveCamera;
         
         
@@ -86,7 +86,7 @@ MODULE MainModule
         ! Setup camera device
         setUpCameraDevice; 
         
-        bMoveThisArm := TRUE;
+        bMoveThisArm := FALSE;
         CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
         
         tMarker.robhold := TRUE;
