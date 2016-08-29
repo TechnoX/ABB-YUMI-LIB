@@ -314,31 +314,7 @@ MODULE MainModule
         preCalibration nAnglePreTransform, pxPreOffset, \moveCamera?moveCamera, \angular;
         
         
-        ! Place logo outside image with angle
-        ! Move the translation to get the image inside of view again. Without turning the angle. 
-        
-        psLookAtMarkerAtEulerAngle := [0,0,90];
-        
-        pxPreOffset := getNewOffset(psLookAtMarkerAtEulerAngle, pxPreOffset, nAnglePreTransform, \moveCamera?moveCamera);
-        !Moves the hand
-        MoveInCameraFramePlane [0,0,0], \psEulerAngle:=psLookAtMarkerAtEulerAngle;
-
-        
-        !bDummy := placeMarkerAtPixel([1540,1000,70], pxPreOffset, nAnglePreTransform, pxDummy, \moveCamera?moveCamera, \angular);
-        !pxPreOffset.u := 1540;
-        !pxPreOffset.v := 1000;
-        
-        ! Reset the new working plane.... 
-        pStart := getCurrentRobtarget(\tTool:=tTempTool);
-        bDummy := getMarkerInfo(pxDummy);!placeMarkerAtPixel([640,480,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
-        pxPreOffset.u := pxPreOffset.u - pxDummy.u;
-        pxPreOffset.v :=pxPreOffset.v - pxDummy.v;
-        pxPreOffset.scale := pxPreOffset.scale - pxDummy.scale;
-        bDummy := placeMarkerAtPixel([1000,760,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
-        
-        
-        Stop \AllMoveTasks;
-        getExtSAndU pxPreOffset, nPreTransform, peRob2Wrist, pxU, nNumPoints, \moveCamera?moveCamera;
+        getExtSAndU pxPreOffset, nPreTransform, nAnglePreTransform, peRob2Wrist, pxU, nNumPoints, \moveCamera?moveCamera;
         
         ! Equation (14) and (15) in paper
         getPointsInCameraFrame nNumPoints, peRob2Wrist, pxU, nKinv, psCam2Marker;
@@ -566,64 +542,38 @@ MODULE MainModule
     ENDPROC
     
     
-    LOCAL PROC getExtSAndU(pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints, \switch moveCamera)
+    LOCAL PROC getExtSAndU(pixel pxPreOffset, num nPreTransform{*,*}, num nPreAngleTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints, \switch moveCamera)
         VAR pixel pxFirstMarker;
         VAR pixel pxSecondMarker;
         VAR robtarget pFirstTarget;
         VAR robtarget pSecondTarget;
-        VAR pos psFirstRelPos;
         VAR bool bFound;
-        CONST pixel pxTargets{nMaxExtPoints} := [[              1.5*nMargin , pxImageSize.v/2             , nScales{1}],
-                                            [pxImageSize.u - 1.5*nMargin , pxImageSize.v/2             , nScales{2}],
-                                            [pxImageSize.u/2             ,                 1.5*nMargin , nScales{1}],
-                                            [pxImageSize.u/2             , pxImageSize.v - 1.5*nMargin , nScales{2}],
-                                            [                1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{1}],
-                                            [pxImageSize.u - 1.5*nMargin ,                 1.5*nMargin , nScales{2}],
-                                            [                1.5*nMargin ,                 1.5*nMargin , nScales{1}],
-                                            [pxImageSize.u - 1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{2}]];
-                                            
-        
-        
-        ! Euler angles, expressed as pos: x,y,z
-        VAR pos angleTargets{nMaxExtPoints/2} := [[0,-25,0],[50,0,0],[-10,-25,0],[10,-25,0]];
+        VAR target targets{4} := [[[pxImageSize.u/2, nMargin*1.5, 0],[pxImageSize.u/2, pxImageSize.v - nMargin*1.5, 0],[-30,0,0]],
+                                  [[nMargin*1.5, pxImageSize.v/2, 0],[pxImageSize.u - nMargin*1.5, pxImageSize.v/2, 0],[0,-25,0]],
+                                  [[nMargin*1.5, nMargin*1.5, 0],[pxImageSize.u - nMargin*1.5, pxImageSize.v - nMargin*1.5, 0],[-20,-20,0]],
+                                  [[nMargin*1.5, pxImageSize.v/2, 0],[pxImageSize.u - nMargin*1.5, pxImageSize.v/2, 0],[0,0,90]]];
         CONST num decreaseFactor := 0.75;
         
         IF Dim(nPreTransform, 1) <> 3 OR Dim(nPreTransform,2) <> 3 THEN
             RAISE ERR_ILLDIM;
         ENDIF
         
+        
         ! This will increase everytime we add a new pose
         nNumPoints := 0;
-        
         ! Loop through all good points to look at
-        FOR i FROM 1 TO Dim(angleTargets,1) DO
-            lbFirstMarker:
-            ! Look for first marker, decrease the angle until it appears in sight
+        FOR i FROM 1 TO Dim(targets,1) DO
+            TPWrite "Search for angle #"\Num:=i;
             bFound := FALSE;
             WHILE NOT bFound DO
-                
-                bFound := findFirstMarker(angleTargets{i});
+                ! TODO: Fix so this not enters an infinite loop. This should be skipped after N tries. Important!!
+                bFound := findMarkers(targets{i}, pxPreOffset, nPreAngleTransform, nPreTransform, \moveCamera?moveCamera, pxFirstMarker, pxSecondMarker, pFirstTarget, pSecondTarget);
                 IF NOT bFound THEN
-                    TPWrite "Can't see! Decrease angle";
+                    TPWrite "Can't see first marker! Decrease angle";
                     ! Decrease angle
-                    angleTargets{i} := angleTargets{i} * decreaseFactor;
+                    targets{i}.psAngle := targets{i}.psAngle * decreaseFactor;
                 ENDIF
-                WaitTime 1;
             ENDWHILE
-            pFirstTarget := getCurrentRobtarget();
-            TPWrite "First position done for target "\Num:=i;
-            
-            ! Move to the next point and hope it is also visible at this rotation, if not we need to decrease the angle and go back
-            ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.
-            IF NOT findSecondMarker([0,0,0]) THEN
-                TPWrite "Ohh noes! Can't see the marker at the second position";
-                ! Decrease angle
-                angleTargets{i} := angleTargets{i} * decreaseFactor;
-                ! TODO: Fix so this not enters an infinite loop. This translation should be skipped after N tries. Important!!
-                GOTO lbFirstMarker;
-            ENDIF
-            pSecondTarget := getCurrentRobtarget();
-            TPWrite "Second position done for target "\Num:=i;
             
             ! Saves these positions
             !TPWrite "Saves pixel "\Num:=i;
@@ -639,8 +589,48 @@ MODULE MainModule
     
     
     ! Place marker in the middle of the image, while looking at it with the angle orAngle (relative to the base coordinate system). 
-    LOCAL FUNC bool findFirstMarker(pos psEulerAngle)
-        RETURN FALSE;
+    LOCAL FUNC bool findMarkers(target t, pixel pxPreOffset, num nPreAngleTransform{*,*}, num nPreTransTransform{*,*}, \switch moveCamera, INOUT pixel pxFirstMarker, INOUT pixel pxSecondMarker, INOUT robtarget pFirstTarget, INOUT robtarget pSecondTarget)
+        VAR pixel pxTempOffset;
+        VAR num nDist := 1.0;
+        VAR num nDecreaseFactor := 0.75;
+        VAR robtarget pOldStart;
+        ! Place logo outside image with angle
+        pxTempOffset := getNewOffset(t.psAngle, pxPreOffset, nPreAngleTransform, \moveCamera?moveCamera);
+        !Moves the hand
+        MoveInCameraFramePlane [0,0,0], \psEulerAngle:=t.psAngle;
+
+        ! Move the translation to get the image inside of view again. Without turning the angle. 
+        
+        ! Reset the new working plane....  TODO: It is not good to change start! 
+        pOldStart := pStart; ! Backup old start;
+        pStart := getCurrentRobtarget(\tTool:=tTempTool);
+        
+        ! IF Z ANGLE ADJUSTMENT! 
+        !bDummy := getMarkerInfo(pxDummy);!placeMarkerAtPixel([640,480,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
+        !pxPreOffset.u := pxPreOffset.u - pxDummy.u;
+        !pxPreOffset.v := pxPreOffset.v - pxDummy.v;
+        !pxPreOffset.scale := pxPreOffset.scale - pxDummy.scale;
+        IF NOT placeMarkerAtPixel(t.pxFrom, pxTempOffset, nPreTransTransform, pxFirstMarker, \moveCamera?moveCamera, \restrictZ, \nMaxDistance:=400) THEN
+            pStart := pOldStart;
+            RETURN FALSE;
+        ENDIF
+        pFirstTarget := getCurrentRobtarget();
+        TPWrite "First marker found";
+        
+        
+        ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.
+        WHILE NOT placeMarkerAtPixel(t.pxTo, pxTempOffset, nPreTransTransform, pxSecondMarker, \moveCamera?moveCamera, \restrictZ, \nMaxDistance:=400) DO
+            ! TODO: Fix so this not enters an infinite loop. This translation should be skipped after N tries. Important!!
+            TPWrite "Can't see second marker, decrease distance";
+            nDist := nDist * nDecreaseFactor;
+            t.pxTo.u := t.pxFrom.u + nDist * (t.pxTo.u - t.pxFrom.u);
+            t.pxTo.v := t.pxFrom.v + nDist * (t.pxTo.v - t.pxFrom.v);
+            t.pxTo.scale := t.pxFrom.scale + nDist * (t.pxTo.scale - t.pxFrom.scale);
+        ENDWHILE
+        pSecondTarget := getCurrentRobtarget();
+        TPWrite "Second marker found";
+        pStart := pOldStart;
+        RETURN TRUE;
     ENDFUNC
     
     ! Find second type by just moving in X and Y direction of the camera centered coordinate system
