@@ -1,11 +1,21 @@
 MODULE MainModule
     
     LOCAL RECORD pixel
-        num u;
-        num v;
+        num u; ! Horizontal in computer viewed image
+        num v; ! Vertical in computer viewed image
         ! If scale is used for a detection it can be saved in the pixel record. Otherwise uninitialized; 
         num scale; 
+        ! angle around Z axis in camera coordinate system
+        !num Rz;
     ENDRECORD
+    
+    LOCAL RECORD target
+        pixel pxFrom;
+        pixel pxTo;
+        pos psAngle; !NOTE THIS IS EULER ANGLES; NOT ORIENT; TO BE ABLE TO SET IT INTIUTIVELY
+    ENDRECORD
+    
+    
     ! "Enum" for the directions
     LOCAL CONST num DIRECTION_X:=0;
     LOCAL CONST num DIRECTION_Y:=1;
@@ -34,26 +44,30 @@ MODULE MainModule
     ! Maximum number of pairs in (18) - (22).
     LOCAL CONST num nMaxPairs := 6;
     
+    ! Temp tooldata used when passing around variables. Can't create pers inside routine, and tooldata is required to be PERS...
+    LOCAL PERS tooldata tTempTool :=  [TRUE, [[0, 0, 0], [0.50944, -0.511021, -0.504797, -0.473823]], [0.001, [0, 0, 0.001], [1, 0, 0, 0], 0, 0, 0]];
+    
     ! Used to pass position data between this and the other Motion Task for moving the other arm. 
     PERS robtarget pLogoTarget;
     
     
     
     
+    
+    
     ! This is for the example code in main(), not used by the calibration routines themselves.  
-    PERS tooldata tMarker := [TRUE, [[2.2139, -31.7831, 32.9929], [1, 0, 0, 0]],
-                             [0.001, [2.2139, -31.7831, 32.9929],[1, 0, 0, 0], 0, 0, 0]];
-    PERS tooldata tCamera := [TRUE, [[-7.41233, 33.0536, 36.4786], [0.506138, -0.49621, -0.507202, -0.49025]],
-                             [0.001, [-7.41233, 33.0536, 36.4786],[1, 0, 0, 0], 0, 0, 0]];
-    PERS wobjdata wCamera := [FALSE, TRUE, "", [[198.159, -82.9229, 535.612],[0.10768, 0.377052, 0.884889, 0.251413]],
+    PERS tooldata tMarker := [TRUE, [[247.271, -1619.63, -142.362], [1, 0, 0, 0]],
+                             [0.001, [247.271, -1619.63, -142.362],[1, 0, 0, 0], 0, 0, 0]];
+    PERS tooldata tCamera := [TRUE, [[36.8569, -1695.44, -174.353], [0.460121, -0.504528, -0.488578, -0.543168]],
+                             [0.001, [36.8569, -1695.44, -174.353],[1, 0, 0, 0], 0, 0, 0]];
+    PERS wobjdata wCamera := [FALSE, TRUE, "", [[368.467, -111.038, 195.797],[0.506313, -0.448169, 0.522104, 0.519807]],
                              [[0, 0, 0],[1, 0, 0, 0]]];
-    PERS dnum dnK{3,3} :=    [[1644.31373064943,4.57558224542382,624.413837499637],[0,1649.76425831997,497.957508211329],[0,0,1]];
+    PERS dnum dnK{3,3} :=    [[1653.61235861371,-3.87061033149386,626.08474435721],[0,1652.56549023444,496.636737396745],[0,0,1]];
 
     PROC main()
         
-        
         ! Moves to a initial position with correct configuration. 
-        !MoveAbsJ [[73.7158,-90.4035,20.6941,36.0716,113.105,138.297],[-75.8492,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
+        MoveAbsJ [[85.7181,-100.266,26.4111,27.8509,94.6338,140.358],[-70.538,9E+09,9E+09,9E+09,9E+09,9E+09]]\NoEOffs, v1000, fine, tool_YuMiGripper_S_C;    
         
         ! Wait for other task
         WaitTime 1;
@@ -62,10 +76,26 @@ MODULE MainModule
         ! Important that both arms have been moved to their initial positions before you call one of the routines below. 
         
         ! Run ONE of the below examples
-        CalibrateExternalCamera wCamera, tMarker, dnK;
+        !CalibrateExternalCamera wCamera, tMarker, dnK;
         !CalibrateHandCamera tCamera, tMarker, dnK;
-        !CalibrateHandCamera tCamera, tMarker, dnK, \moveCamera;
+        CalibrateHandCamera tCamera, tMarker, dnK, \moveCamera;
+        !bMoveThisArm := TRUE;
         
+        
+        !pStart := getCurrentRobtarget(\tTool:=tTempTool);
+        
+        !MoveInCameraFramePlane [0,0,100];
+        !MoveInCameraFramePlane [0,0,-100];
+        !MoveInCameraFramePlane [0,100,0];
+        !MoveInCameraFramePlane [0,-100,0];
+        !MoveInCameraFramePlane [100,0,0];
+        !MoveInCameraFramePlane [-100,0,0];
+        
+        
+        !MoveInCameraFramePlane [0,100,100],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,20];
+        !MoveInCameraFramePlane [0,-200,0],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,20];
+        !MoveInCameraFramePlane [100,100,0],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,-20];
+        !MoveInCameraFramePlane [-200,0,0],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,-20];
         
         Stop \AllMoveTasks;
     ENDPROC
@@ -86,7 +116,10 @@ MODULE MainModule
         ! Setup camera device
         setUpCameraDevice; 
         
-        bMoveThisArm := FALSE;
+        ! Should be the marker arm that call the calibration routine. 
+        bMoveThisArm := TRUE;
+        
+        
         CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
         
         tMarker.robhold := TRUE;
@@ -128,7 +161,7 @@ MODULE MainModule
         setUpCameraDevice; 
         
         pRob2CamWrist := getCurrentRobtarget(\other);
-        CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
+        CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK, \moveCamera?moveCamera;
 
         peCamWrist2Rob := PoseInv([pRob2CamWrist.trans, pRob2CamWrist.rot]);
         peCamWrist2Cam := PoseMult(peCamWrist2Rob, peRob2Cam);
@@ -143,7 +176,7 @@ MODULE MainModule
     ENDPROC
     
     
-    LOCAL PROC CalibrateInternal(INOUT pose peRob2Cam, INOUT pose peMarkerWrist2Marker, INOUT dnum dnK{*,*})
+    LOCAL PROC CalibrateInternal(INOUT pose peRob2Cam, INOUT pose peMarkerWrist2Marker, INOUT dnum dnK{*,*}, \switch moveCamera)
         VAR orient orRob2Cam;
         VAR pos psRob2CHat;
         VAR pos psWrist2Marker;
@@ -157,7 +190,10 @@ MODULE MainModule
         orMarkerWrist2Rob := QuatInv(pStart.rot);
         
         ! Phase one of the paper
-        calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv;
+        !calibIntrinsicAndRotation orRob2Cam, psRob2CHat, dnK, dnKinv;
+        orRob2Cam := [0.487218,-0.517394,-0.520737,-0.473027];
+        psRob2CHat := [413.957,177.691,255.447];
+        dnKinv := [[0.000604736651120786,1.41640373316101E-06,-0.379319829749267],[0,0.000605119740130927,-0.30052469347299],[0,0,1]];
         !orRob2Cam := [0.573205,0.397208,0.431512,0.57224];
         !psRob2CHat := [155.257,24.6881,66.2292];
         !dnK := [[1649.52212675067,-2.14907467250056,635.975918352858],[0,1640.33360150003,498.794668040982],[0,0,1]];
@@ -166,9 +202,14 @@ MODULE MainModule
         
         TPWrite "Done with part 1";
         
+        createTool orRob2Cam, \moveCamera?moveCamera;
+        pStart := getCurrentRobtarget(\tTool:=tTempTool);
+        
+        
+        
         dnumMatrix2numMatrix dnKinv, nKInv;
         ! Phase two and three of the paper
-        calibExtrinsic orRob2Cam, nKInv, peRob2Cam;
+        calibExtrinsic orRob2Cam, nKInv, peRob2Cam, \moveCamera?moveCamera;
         
         ! The translation C-hat to C is the same as the translation Wrist to Marker, in compliance with Fig. 6, on page 5 of paper
         ! This is the distance / transformation from wrist to marker, in the base robot coordinate system.
@@ -182,12 +223,40 @@ MODULE MainModule
 	ENDPROC
     
     
+    LOCAL PROC createTool(orient orRob2Cam, \switch moveCamera)
+        ! Rotation of the wrist (of the arm with camrea) to the camera center. 
+        VAR orient orCamWrist2Cam;
+        ! Robtarget of the wrist with the camera
+        VAR robtarget pRob2CamWrist;
+        ! Transformation from camwrist to robot base frame coordinate system
+        VAR pose peCamWrist2Rob;
+        ! Transofrmation from camwrist to camera center.
+        VAR pose peCamWrist2Cam;
+        
+        
+        IF Present(moveCamera) THEN
+            pRob2CamWrist := getCurrentRobtarget();
+            peCamWrist2Rob := PoseInv([pRob2CamWrist.trans, pRob2CamWrist.rot]);
+            peCamWrist2Cam := PoseMult(peCamWrist2Rob, [[0,0,0],orRob2Cam]);
+            orCamWrist2Cam := peCamWrist2Cam.rot;
+        ELSE ! TODO: Maybe this if-else-statement is unecessary even for external cams or moving ABB logo. But keep it for now to prevent anything from breaking
+            orCamWrist2Cam := orRob2Cam;
+        ENDIF
+        tTempTool := [TRUE, [[0, 0, 0], orCamWrist2Cam], [0.001, [0, 0, 0.001], [1, 0, 0, 0], 0, 0, 0]];
+        
+    ENDPROC
+    
+    
     ! Normally it returns the arm that is moving (sometimes it is the hand with marker, other times it is the one with the camera)
     ! If you specify "other" you will get the robtarget for the stationary arm. 
-    LOCAL FUNC robtarget getCurrentRobtarget(\switch other)
+    LOCAL FUNC robtarget getCurrentRobtarget(\PERS tooldata tTool, \switch other)
         IF Present(other) XOR bMoveThisArm THEN
-            TPWrite "Camera arm read position!";
-            RETURN CRobT(\Tool:=tool0,\WObj:=wobj0);
+            IF Present(tTool) THEN
+                RETURN CRobT(\Tool:=tTool,\WObj:=wobj0);
+            ELSE
+                RETURN CRobT(\Tool:=tool0,\WObj:=wobj0);
+            ENDIF
+
         ELSE
             ! TODO: Fix this to work for both left and right arm. 
             RETURN CRobT(\TaskName:="T_ROB_L",\Tool:=tool0,\WObj:=wobj0);
@@ -207,11 +276,13 @@ MODULE MainModule
     
     
     ! Phase two and three of the paper
-    LOCAL PROC calibExtrinsic(orient orRob2Cam, num nKInv{*,*}, INOUT pose peRob2Cam)
+    LOCAL PROC calibExtrinsic(orient orRob2Cam, num nKInv{*,*}, INOUT pose peRob2Cam, \switch moveCamera)
         ! The pixel where the first marker was detected (during precalibration)
         VAR pixel pxPreOffset;
         ! The precalibration transform, used to place the logo at specific coordinates in the image
         VAR num nPreTransform{3,3};
+        ! The angle precalibration transform, used to place the logo at specific coordinates in the image
+        VAR num nAnglePreTransform{3,3};
         ! This is called S_ext in the paper on page 5. 
         VAR Pose peRob2Wrist{nMaxExtPoints};
         ! This is called U_ext in the paper on page 5.
@@ -221,9 +292,10 @@ MODULE MainModule
         ! The number of points used for second phase (reorientations), this is number 2*n in the paper
         ! Needs to be even for obvious reasons (n is an integer).
         VAR num nNumPoints;
-
         ! Called t_ext in paper
         VAR pos psRob2Cam;
+        VAR pixel pxDummy;
+        VAR bool bDummy;
         
         IF Dim(nKInv,1) <> 3 OR Dim(nKInv,2) <> 3 THEN
             RAISE ERR_ILLDIM;
@@ -232,9 +304,28 @@ MODULE MainModule
         ! Precalibration to get a sense of what direction is up, down, etc of the image
         ! The result here can be used to positionate the logo at specific pixels in the image
         ! Find an initial transformation from pixel coordinates to world coordinates
-        preCalibration nPreTransform, pxPreOffset,\orRob2Cam:=orRob2Cam;
+        !preCalibration nPreTransform, pxPreOffset, \moveCamera?moveCamera;
+        nPreTransform := [[-0.186389,-0.00892854,0.343306],[0.00672944,-0.183832,0.193036],[-0.0180619,0.000956219,5.26818]];
+        pxPreOffset := [700.733,578.631,60.0001];
         
-        getExtSAndU orRob2Cam, pxPreOffset, nPreTransform, peRob2Wrist, pxU, nNumPoints;
+        preCalibration nAnglePreTransform, pxPreOffset, \moveCamera?moveCamera, \angular;
+        
+        
+        ! Do a angle precalibration as well
+        ! Place logo outside image with angle
+        ! Move the translation to get the image inside of view again. Without turning the angle. 
+        
+        bDummy := placeMarkerAtPixel([1540,1000,70], pxPreOffset, nAnglePreTransform, pxDummy, \moveCamera?moveCamera, \angular);
+        pxPreOffset.u := 1540;
+        pxPreOffset.v := 1000;
+        
+        ! Reset the new working plane.... 
+        pStart := getCurrentRobtarget(\tTool:=tTempTool);
+        bDummy := placeMarkerAtPixel([1100,210,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
+
+        
+        Stop \AllMoveTasks;
+        getExtSAndU pxPreOffset, nPreTransform, peRob2Wrist, pxU, nNumPoints, \moveCamera?moveCamera;
         
         ! Equation (14) and (15) in paper
         getPointsInCameraFrame nNumPoints, peRob2Wrist, pxU, nKinv, psCam2Marker;
@@ -422,24 +513,36 @@ MODULE MainModule
         RETURN nDistance;
     ENDFUNC
     
-    LOCAL PROC getExtSAndU(orient orRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints)
+    LOCAL PROC getExtSAndU2(orient orRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints)
+        CONST target pxTargets{1} := [[[pxImageSize.u / 2 - 100, pxImageSize.v / 2 - 100, 70], [pxImageSize.u / 2 + 100, pxImageSize.v / 2 + 100, 70], [40,0,0]]];
+        
+        ! Loop through all good points to look at
+        !FOR i FROM 1 TO Dim(pxTargets,1) DO
+        !    
+        !ENDFOR
+    ENDPROC
+    
+    
+    LOCAL PROC getExtSAndU(pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints, \switch moveCamera)
         VAR pixel pxFirstMarker;
         VAR pixel pxSecondMarker;
         VAR robtarget pFirstTarget;
         VAR robtarget pSecondTarget;
         VAR pos psFirstRelPos;
         VAR bool bFound;
-        CONST pixel pxTargets{nMaxExtPoints} := [[              1.5*nMargin , pxImageSize.v/2             , nScales{2}],
+        CONST pixel pxTargets{nMaxExtPoints} := [[              1.5*nMargin , pxImageSize.v/2             , nScales{1}],
                                             [pxImageSize.u - 1.5*nMargin , pxImageSize.v/2             , nScales{2}],
-                                            [pxImageSize.u/2             ,                 1.5*nMargin , nScales{2}],
+                                            [pxImageSize.u/2             ,                 1.5*nMargin , nScales{1}],
                                             [pxImageSize.u/2             , pxImageSize.v - 1.5*nMargin , nScales{2}],
-                                            [                1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{3}],
-                                            [pxImageSize.u - 1.5*nMargin ,                 1.5*nMargin , nScales{3}],
-                                            [                1.5*nMargin ,                 1.5*nMargin , nScales{3}],
-                                            [pxImageSize.u - 1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{3}]];
+                                            [                1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{1}],
+                                            [pxImageSize.u - 1.5*nMargin ,                 1.5*nMargin , nScales{2}],
+                                            [                1.5*nMargin ,                 1.5*nMargin , nScales{1}],
+                                            [pxImageSize.u - 1.5*nMargin , pxImageSize.v - 1.5*nMargin , nScales{2}]];
+                                            
+        
+        
         ! Euler angles, expressed as pos: x,y,z
-        VAR pos angleTargets{nMaxExtPoints/2} := [[25,0,0],[0,50,0],[0,0,20],[25,25,0]];
-        VAR orient orAngle;
+        VAR pos angleTargets{nMaxExtPoints/2} := [[0,-25,0],[50,0,0],[-10,-25,0],[10,-25,0]];
         CONST num decreaseFactor := 0.75;
         
         IF Dim(nPreTransform, 1) <> 3 OR Dim(nPreTransform,2) <> 3 THEN
@@ -455,9 +558,8 @@ MODULE MainModule
             ! Look for first marker, decrease the angle until it appears in sight
             bFound := FALSE;
             WHILE NOT bFound DO
-                orAngle := OrientZYX(angleTargets{i}.z, angleTargets{i}.y, angleTargets{i}.x);
                 
-                bFound := placeMarkerAtPixel(pxTargets{2*i-1}, pxPreOffset, nPreTransform, pxFirstMarker, \psMovedToRelPos:=psFirstRelPos, \orRob2Cam:=orRob2Cam, \angle:=orAngle, \nMaxDistance:=600);
+                bFound := findFirstMarker(angleTargets{i});
                 IF NOT bFound THEN
                     TPWrite "Can't see! Decrease angle";
                     ! Decrease angle
@@ -469,8 +571,8 @@ MODULE MainModule
             TPWrite "First position done for target "\Num:=i;
             
             ! Move to the next point and hope it is also visible at this rotation, if not we need to decrease the angle and go back
-            ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.  
-            IF NOT placeMarkerAtPixel(pxTargets{2*i}, pxPreOffset, nPreTransform, pxSecondMarker, \orRob2Cam:=orRob2Cam, \nFixZ:=psFirstRelPos.z, \angle:=orAngle, \nMaxDistance:=600) THEN
+            ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.
+            IF NOT findSecondMarker([0,0,0]) THEN
                 TPWrite "Ohh noes! Can't see the marker at the second position";
                 ! Decrease angle
                 angleTargets{i} := angleTargets{i} * decreaseFactor;
@@ -493,22 +595,33 @@ MODULE MainModule
     ENDPROC
     
     
+    ! Place marker in the middle of the image, while looking at it with the angle orAngle (relative to the base coordinate system). 
+    LOCAL FUNC bool findFirstMarker(pos psEulerAngle)
+        RETURN FALSE;
+    ENDFUNC
     
+    ! Find second type by just moving in X and Y direction of the camera centered coordinate system
+    LOCAL FUNC bool findSecondMarker(pos relativeMovement)
+        RETURN FALSE;
+    ENDFUNC
     
     ! Moves to a relative position (translation) in the camera frame
-    ! With an optional rotation of the wrist relative origin rotation (maybe relative camera rotation instead?!??).
-    LOCAL PROC MoveInCameraFramePlane(pos relativeMovement, orient orRob2Cam, \orient angle)
-        VAR robtarget pTarget;
-        VAR Pose peTemp;
-        pTarget := pStart;
-        peTemp := PoseMult([pStart.trans, orRob2Cam], [relativeMovement,[1,0,0,0]]);
-        pTarget.trans := peTemp.trans;
-        IF present(angle) THEN
-            
-            peTemp := PoseMult([[0,0,0],pStart.rot], [[0,0,0],angle]);
-            pTarget.rot := peTemp.rot;
+    ! With an optional rotation of the wrist relative camera center coordinate system
+    ! NOTE: pStart needs to be calculated with the orientation from orCamWrist2Cam somewhere before (and the same orientation should be in tTempTool!)
+    LOCAL PROC MoveInCameraFramePlane(pos relativeMovement, \pos psEulerAngle, \switch restrictZ)
+        VAR num Rx := 0;
+        VAR num Ry := 0;
+        VAR num Rz := 0;
+        IF Present(psEulerAngle) THEN
+            Rx := psEulerAngle.x;
+            Ry := psEulerAngle.x;
+            Rz := psEulerAngle.z;
         ENDIF
-        Move(pTarget);
+        IF Present(restrictZ) THEN
+            relativeMovement.z := 0;
+        ENDIF
+        
+        MoveL reltool(pStart, relativeMovement.x, relativeMovement.y, relativeMovement.z, \Rx?psEulerAngle.x, \Ry?psEulerAngle.y, \Rz?psEulerAngle.z), vSpeed, fine, tTempTool, \WObj:=wobj0;
     ENDPROC
     
     
@@ -595,7 +708,7 @@ MODULE MainModule
         
         ! NOTE: Important to also invert the translation part, otherwise it gives the Rob position in the CHat coordinate system (rotated and translated)
         peRob2CHat := PoseInv(peCHat2Rob);
-        Move(pStart);
+        Move(pStart);! Not neccesary!?
         orRob2Cam := peRob2CHat.rot;
         psRob2CHat := peRob2CHat.trans;
         
@@ -904,34 +1017,41 @@ MODULE MainModule
         nNumPoses := nIndex - 1;
     ENDPROC
     
-    ! If a peRob2Cam is provided the movements will be done using the camera frame instead of absolute coordinates. 
-    LOCAL PROC preCalibration(INOUT num transform{*,*}, INOUT pixel offset, \orient orRob2Cam)
+    ! If a moveCamera is provided the movements will be done using the camera frame instead of absolute coordinates. 
+    LOCAL PROC preCalibration(INOUT num transform{*,*}, INOUT pixel offset, \switch moveCamera, \switch angular)
         VAR num nTransform{3,3};
         VAR bool bDummy;
         
-        IF Dim(nTransform, 1) <> 3 OR Dim(nTransform,2) <> 3 THEN
+        IF DIM(transform,1) <> 3 OR DIM(transform,1) <> 3 THEN
+            TPWrite "The transform must be of size 3x3";
             RAISE ERR_ILLDIM;
         ENDIF
         
         ! Image coords from the original marker (that is at the "pStart" position)
-        bDummy := getMarkerInfoAtPos([0,0,0], offset, \orRob2Cam?orRob2Cam);
-        
-        calculateMovementTransform nTransform, \orRob2Cam?orRob2Cam;
-        invert3x3Matrix nTransform, transform;
+        bDummy := getMarkerInfoAtPos([0,0,0], offset, \moveCamera?moveCamera);
+        calculateMovementTransform nTransform, \moveCamera?moveCamera, \angular?angular;
+        IF Present(angular) THEN
+            invert2DMatrix nTransform, transform;
+        ELSE
+            invert3x3Matrix nTransform, transform;
+        ENDIF
     ENDPROC
     
     
     ! If restrictZ = True, don't move the hand anything along the Z axis. 
-    ! angle: Optional angle to turn the wrist to.
-    LOCAL FUNC bool placeMarkerAtPixel(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*}, INOUT pixel pxDetectedMarker,\INOUT pos psMovedToRelPos, \orient orRob2Cam, \num nFixZ, \orient angle,\num nMaxDistance)
-        VAR num nCoords{3}; 
+    ! psEulerAngle: Relative angle to turn the wrist (around the camera coordinate system axes)
+    LOCAL FUNC bool placeMarkerAtPixel(pixel pxTarget, pixel pxCalibOffset, num nTransform{*,*}, INOUT pixel pxDetectedMarker, \switch moveCamera, \switch restrictZ, \pos psEulerAngle, \num nMaxDistance, \switch angular)
+        VAR num nCoords{3};
         VAR pos psRelPos;
         VAR num nRelPixelTarget{3};
         VAR num nDist;
+        VAR num nMaxDist;
         
         ! Max distance to be considered a true detection
-        IF NOT Present(nMaxDistance) THEN
-            nMaxDistance := 200; 
+        IF Present(nMaxDistance) THEN
+            nMaxDist := nMaxDistance;
+        ELSE
+            nMaxDist := 200; 
         ENDIF
         
         nRelPixelTarget{1} := pxTarget.u - pxCalibOffset.u;
@@ -942,27 +1062,26 @@ MODULE MainModule
         psRelPos.x := nCoords{1};
         psRelPos.y := nCoords{2};
         psRelPos.z := nCoords{3};
-        IF Present(nFixZ) THEN
-            ! Restrict the z movement to the specified parameter. 
-            TPWrite "Restricts Z!!!";
-            psRelPos.z := nFixZ;
-        ENDIF
         
-        ! psMovedToRelPos is an output parameter, that if it exist should return the position where we moved. 
-        IF Present(psMovedToRelPos) THEN
-            psMovedToRelPos := psRelPos;
-        ENDIF
-        
-        ! If not detected at all
-        IF NOT getMarkerInfoAtPos(psRelPos, pxDetectedMarker, \orRob2Cam?orRob2Cam, \angle?angle) THEN
-            TPWrite "Marker not detected! Not saved!";
-            RETURN FALSE;
+        !If not detected at all
+        IF Present(angular) THEN
+            ! Do not rotate around Z axis, since it will not change the positon of the image (and is not calibrated at all). 
+            psRelPos.z := 0; ! TODO: Isn't this already 0 in all cases, because last row in transform will be 0 0 0???
+            IF NOT getMarkerInfoAtPos([0,0,0], pxDetectedMarker, \moveCamera?moveCamera, \psEulerAngle:=psRelPos) THEN
+                TPWrite "Marker not detected! Not saved!";
+                RETURN FALSE;
+            ENDIF
+        ELSE
+            IF NOT getMarkerInfoAtPos(psRelPos, pxDetectedMarker, \moveCamera?moveCamera, \psEulerAngle?psEulerAngle, \restrictZ?restrictZ) THEN
+                TPWrite "Marker not detected! Not saved!";
+                RETURN FALSE;
+            ENDIF
         ENDIF
         
         ! If detected at wrong position in the image, we are discarding this detection
         nDist := getPixelDistance(pxDetectedMarker, pxTarget);
         !TPWrite "Pixel distance: "\Num:=nDist;
-        IF nDist > nMaxDistance THEN
+        IF nDist > nMaxDist THEN
             TPWrite "Marker detected at wrong location in image!! "\Num:=nDist;
             RETURN FALSE;
         ENDIF
@@ -975,67 +1094,109 @@ MODULE MainModule
         RETURN Sqrt((px1.u - px2.u) * (px1.u - px2.u) + (px1.v - px2.v) * (px1.v - px2.v) + (px1.scale - px2.scale) * (px1.scale - px2.scale));
     ENDFUNC
     
-    LOCAL PROC calculateMovementTransform(INOUT num nTransform{*,*}, \orient orRob2Cam)
+    LOCAL PROC calculateMovementTransform(INOUT num nTransform{*,*}, \switch moveCamera, \switch angular)
         VAR num nDistances{3};
         VAR pixel nPixelDistances{3};
         IF DIM(nTransform,1) <> 3 OR DIM(nTransform,1) <> 3 THEN
             TPWrite "The transform must be of size 3x3";
-            RAISE ERR_NOTEQDIM;
+            RAISE ERR_ILLDIM;
+        ENDIF
+        ! Moves in X direction of robot-frame and get moved distance in X and pixels. 
+        getMarkerData DIRECTION_X, nDistances{1}, nPixelDistances{1},\moveCamera?moveCamera, \angular?angular;
+        
+        ! Moves in Y direction of robot-frame and get moved distance in Y and pixels. 
+        getMarkerData DIRECTION_Y, nDistances{2}, nPixelDistances{2},\moveCamera?moveCamera, \angular?angular;
+
+        IF NOT Present(angular) THEN
+            ! Moves in Z direction of robot-frame and get moved distance in Z and pixels. 
+            getMarkerData DIRECTION_Z, nDistances{3}, nPixelDistances{3},\moveCamera?moveCamera, \angular?angular;
         ENDIF
         
-        ! Moves in X direction of robot-frame and get moved distance in X and pixels. 
-        getMarkerData DIRECTION_X, nDistances{1}, nPixelDistances{1},\orRob2Cam?orRob2Cam;
-        ! Moves in Y direction of robot-frame and get moved distance in Y and pixels. 
-        getMarkerData DIRECTION_Y, nDistances{2}, nPixelDistances{2},\orRob2Cam?orRob2Cam;
-        ! Moves in Z direction of robot-frame and get moved distance in Z and pixels. 
-        getMarkerData DIRECTION_Z, nDistances{3}, nPixelDistances{3},\orRob2Cam?orRob2Cam;
-        
-        
-        ! Probably possible to make this to a Matrix multiplication?
-        ! But this is at least working. And pretty clear? :)
-        FOR c FROM 1 TO 3 DO
-            nTransform{1,c} := nPixelDistances{c}.u / nDistances{c};
-            nTransform{2,c} := nPixelDistances{c}.v / nDistances{c};
-            nTransform{3,c} := nPixelDistances{c}.scale / nDistances{c};
-        ENDFOR
-        
-        !Stop;
+        IF Present(angular) THEN
+            FOR c FROM 1 TO 2 DO
+                nTransform{1,c} := nPixelDistances{c}.u / nDistances{c};
+                nTransform{2,c} := nPixelDistances{c}.v / nDistances{c};
+            ENDFOR
+        ELSE
+            ! Probably possible to make this to a Matrix multiplication?
+            ! But this is at least working. And pretty clear? :)
+            FOR c FROM 1 TO 3 DO
+                nTransform{1,c} := nPixelDistances{c}.u / nDistances{c};
+                nTransform{2,c} := nPixelDistances{c}.v / nDistances{c};
+                nTransform{3,c} := nPixelDistances{c}.scale / nDistances{c};
+            ENDFOR
+        ENDIF
     ENDPROC
     
     
     
     
     ! Moves in the arm along the specified axis to the most negative and then most positive to find out the biggest difference in pixel distance
-    LOCAL PROC getMarkerData(num nDirection, INOUT num traveledDistanceAlongAxis, INOUT pixel pixelDifferences, \orient orRob2Cam)
+    LOCAL PROC getMarkerData(num nDirection, INOUT num traveledDistanceAlongAxis, INOUT pixel pixelDifferences, \switch moveCamera, \switch angular)
         CONST num nMaxDistance:=30;
+        CONST num nMaxAngle:=10;
         CONST num nDecreaseFactor := 0.5;
         VAR pixel psMaxDetectedMarker;
         VAR pixel psMinDetectedMarker;
-        VAR num nPositiveDistance:=nMaxDistance;
-        VAR num nNegativeDistance:=nMaxDistance;
+        VAR num nPositiveDistance;
+        VAR num nNegativeDistance;
+        IF Present(angular) THEN
+            nPositiveDistance:=nMaxAngle;
+            nNegativeDistance:=nMaxAngle;
+        ELSE
+            nPositiveDistance:=nMaxDistance;
+            nNegativeDistance:=nMaxDistance;
+        ENDIF
         
         TEST nDirection
             CASE DIRECTION_X:
-                WHILE NOT getMarkerInfoAtPos([nPositiveDistance,0,0], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
-                    nPositiveDistance := nDecreaseFactor * nPositiveDistance;
-                ENDWHILE
-                WHILE NOT getMarkerInfoAtPos([-nNegativeDistance,0,0], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
-                    nNegativeDistance := nDecreaseFactor * nNegativeDistance;
-                ENDWHILE
+                IF Present(angular) THEN
+                    WHILE NOT getMarkerInfoAtPos([0,0,0], psMaxDetectedMarker,\moveCamera?moveCamera,\psEulerAngle:=[nPositiveDistance,0,0]) DO
+                        nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                    ENDWHILE
+                    WHILE NOT getMarkerInfoAtPos([0,0,0], psMinDetectedMarker,\moveCamera?moveCamera,\psEulerAngle:=[-nNegativeDistance,0,0]) DO
+                        nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                    ENDWHILE
+                ELSE
+                    WHILE NOT getMarkerInfoAtPos([nPositiveDistance,0,0], psMaxDetectedMarker,\moveCamera?moveCamera) DO
+                        nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                    ENDWHILE
+                    WHILE NOT getMarkerInfoAtPos([-nNegativeDistance,0,0], psMinDetectedMarker,\moveCamera?moveCamera) DO
+                        nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                    ENDWHILE
+                ENDIF
             CASE DIRECTION_Y:
-                WHILE NOT getMarkerInfoAtPos([0,nPositiveDistance,0], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
-                    nPositiveDistance := nDecreaseFactor * nPositiveDistance;
-                ENDWHILE
-                WHILE NOT getMarkerInfoAtPos([0,-nNegativeDistance,0], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
-                    nNegativeDistance := nDecreaseFactor * nNegativeDistance;
-                ENDWHILE
+                IF Present(angular) THEN
+                    WHILE NOT getMarkerInfoAtPos([0,0,0], psMaxDetectedMarker,\moveCamera?moveCamera,\psEulerAngle:=[0,nPositiveDistance,0]) DO
+                        nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                    ENDWHILE
+                    WHILE NOT getMarkerInfoAtPos([0,0,0], psMinDetectedMarker,\moveCamera?moveCamera,\psEulerAngle:=[0,-nNegativeDistance,0]) DO
+                        nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                    ENDWHILE
+                ELSE
+                    WHILE NOT getMarkerInfoAtPos([0,nPositiveDistance,0], psMaxDetectedMarker,\moveCamera?moveCamera) DO
+                        nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                    ENDWHILE
+                    WHILE NOT getMarkerInfoAtPos([0,-nNegativeDistance,0], psMinDetectedMarker,\moveCamera?moveCamera) DO
+                        nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                    ENDWHILE
+                ENDIF
             CASE DIRECTION_Z:
-                WHILE NOT getMarkerInfoAtPos([0,0,nPositiveDistance], psMaxDetectedMarker,\orRob2Cam?orRob2Cam) DO
-                    nPositiveDistance := nDecreaseFactor * nPositiveDistance;
-                ENDWHILE
-                WHILE NOT getMarkerInfoAtPos([0,0,-nNegativeDistance], psMinDetectedMarker,\orRob2Cam?orRob2Cam) DO
-                    nNegativeDistance := nDecreaseFactor * nNegativeDistance;
-                ENDWHILE
+                IF Present(angular) THEN
+                    WHILE NOT getMarkerInfoAtPos([0,0,0], psMaxDetectedMarker,\moveCamera?moveCamera,\psEulerAngle:=[0,0,nPositiveDistance]) DO
+                        nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                    ENDWHILE
+                    WHILE NOT getMarkerInfoAtPos([0,0,0], psMinDetectedMarker,\moveCamera?moveCamera,\psEulerAngle:=[0,0,-nNegativeDistance]) DO
+                        nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                    ENDWHILE
+                ELSE
+                    WHILE NOT getMarkerInfoAtPos([0,0,nPositiveDistance], psMaxDetectedMarker,\moveCamera?moveCamera) DO
+                        nPositiveDistance := nDecreaseFactor * nPositiveDistance;
+                    ENDWHILE
+                    WHILE NOT getMarkerInfoAtPos([0,0,-nNegativeDistance], psMinDetectedMarker,\moveCamera?moveCamera) DO
+                        nNegativeDistance := nDecreaseFactor * nNegativeDistance;
+                    ENDWHILE
+                ENDIF
             DEFAULT: 
                 TPWrite "Illegal direction axis specified";
                 RAISE ERR_ARGVALERR;
@@ -1047,7 +1208,7 @@ MODULE MainModule
         
         
         ! Moves back to start
-        Move(pStart);
+        !! Move(pStart); ! Shouldn't be here! At least not without correct tool! Makes robot turn around very bad. 
         
         ! Returns the differencies 
         traveledDistanceAlongAxis := nPositiveDistance + nNegativeDistance;
@@ -1062,14 +1223,15 @@ MODULE MainModule
 
     LOCAL PROC Move(robtarget pTarget)
         IF bMoveThisArm THEN
-            MoveThisArm(pTarget);
+            MoveThisArm pTarget;
         ELSE
-            MoveOtherArm(pTarget);
+            MoveOtherArm pTarget;
         ENDIF
     ENDPROC
     
     LOCAL PROC MoveThisArm(robtarget pTarget)
         VAR jointtarget jtDummy;
+        
         ! This is not used anywhere, just to throw error if position is not reachable. The error thrown by MoveL didn't seem catchable
         jtDummy := CalcJointT(pTarget, tool0, \WObj:=wobj0);
         ! Moves the robot
@@ -1093,10 +1255,11 @@ MODULE MainModule
         Move(pTarget);
     ENDPROC
     
-    ! If bResctrictZ = true, don't move the hand anything along Z-axis
-    LOCAL FUNC bool getMarkerInfoAtPos(pos psRelPos, INOUT pixel detectedMarker, \orient orRob2Cam, \orient angle)
-        IF Present(orRob2Cam) THEN
-            MoveInCameraFramePlane psRelPos, orRob2Cam, \angle?angle;
+    LOCAL FUNC bool getMarkerInfoAtPos(pos psRelPos, INOUT pixel detectedMarker, \switch moveCamera, \pos psEulerAngle, \switch restrictZ)
+        IF Present(moveCamera) THEN
+            TPWrite "Position: "\Pos:=psRelPos;
+            TPWrite "Angle: "\Pos?psEulerAngle;
+            MoveInCameraFramePlane psRelPos, \psEulerAngle?psEulerAngle, \restrictZ?restrictZ;
         ELSE
             moveToPos psRelPos;
         ENDIF
@@ -1138,6 +1301,7 @@ MODULE MainModule
         px.u := tgt.cframe.trans.x;
         px.v := tgt.cframe.trans.y;
         px.scale := tgt.val1;
+        !px.Rz := EulerZYX (\Z, tgt.cframe.rot);
         RETURN TRUE;
     ERROR
         IF ERRNO=ERR_CAM_MAXTIME THEN
@@ -1148,8 +1312,5 @@ MODULE MainModule
             WaitTime 2.0;
             RETRY;
         ENDIF
-    ENDFUNC
-
-    
-    
+    ENDFUNC    
 ENDMODULE
