@@ -310,14 +310,14 @@ MODULE MainModule
         nPreTransform := [[-0.186389,-0.00892854,0.343306],[0.00672944,-0.183832,0.193036],[-0.0180619,0.000956219,5.26818]];
         pxPreOffset := [700.733,578.631,60.0001];
         
+        ! Do a angle precalibration as well
         preCalibration nAnglePreTransform, pxPreOffset, \moveCamera?moveCamera, \angular;
         
         
-        ! Do a angle precalibration as well
         ! Place logo outside image with angle
         ! Move the translation to get the image inside of view again. Without turning the angle. 
-
-        psLookAtMarkerAtEulerAngle := [0,20,0];
+        
+        psLookAtMarkerAtEulerAngle := [0,0,90];
         
         pxPreOffset := getNewOffset(psLookAtMarkerAtEulerAngle, pxPreOffset, nAnglePreTransform, \moveCamera?moveCamera);
         !Moves the hand
@@ -330,8 +330,12 @@ MODULE MainModule
         
         ! Reset the new working plane.... 
         pStart := getCurrentRobtarget(\tTool:=tTempTool);
-        bDummy := placeMarkerAtPixel([640,480,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
-
+        bDummy := getMarkerInfo(pxDummy);!placeMarkerAtPixel([640,480,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
+        pxPreOffset.u := pxPreOffset.u - pxDummy.u;
+        pxPreOffset.v :=pxPreOffset.v - pxDummy.v;
+        pxPreOffset.scale := pxPreOffset.scale - pxDummy.scale;
+        bDummy := placeMarkerAtPixel([1000,760,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
+        
         
         Stop \AllMoveTasks;
         getExtSAndU pxPreOffset, nPreTransform, peRob2Wrist, pxU, nNumPoints, \moveCamera?moveCamera;
