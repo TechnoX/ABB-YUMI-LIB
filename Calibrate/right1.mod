@@ -45,7 +45,7 @@ MODULE MainModule
     LOCAL CONST num nMaxPairs := 6;
     
     ! Temp tooldata used when passing around variables. Can't create pers inside routine, and tooldata is required to be PERS...
-    LOCAL PERS tooldata tTempTool :=  [TRUE, [[0, 0, 0], [0.50944, -0.511021, -0.504797, -0.473823]], [0.001, [0, 0, 0.001], [1, 0, 0, 0], 0, 0, 0]];
+    LOCAL PERS tooldata tTempTool :=  [TRUE, [[0, 0, 0], [0.509439, -0.51102, -0.504796, -0.473826]], [0.001, [0, 0, 0.001], [1, 0, 0, 0], 0, 0, 0]];
     
     ! Used to pass position data between this and the other Motion Task for moving the other arm. 
     PERS robtarget pLogoTarget;
@@ -296,6 +296,8 @@ MODULE MainModule
         VAR pos psRob2Cam;
         VAR pixel pxDummy;
         VAR bool bDummy;
+
+        VAR pos psLookAtMarkerAtEulerAngle;
         
         IF Dim(nKInv,1) <> 3 OR Dim(nKInv,2) <> 3 THEN
             RAISE ERR_ILLDIM;
@@ -314,14 +316,21 @@ MODULE MainModule
         ! Do a angle precalibration as well
         ! Place logo outside image with angle
         ! Move the translation to get the image inside of view again. Without turning the angle. 
+
+        psLookAtMarkerAtEulerAngle := [0,20,0];
         
-        bDummy := placeMarkerAtPixel([1540,1000,70], pxPreOffset, nAnglePreTransform, pxDummy, \moveCamera?moveCamera, \angular);
-        pxPreOffset.u := 1540;
-        pxPreOffset.v := 1000;
+        pxPreOffset := getNewOffset(psLookAtMarkerAtEulerAngle, pxPreOffset, nAnglePreTransform, \moveCamera?moveCamera);
+        !Moves the hand
+        MoveInCameraFramePlane [0,0,0], \psEulerAngle:=psLookAtMarkerAtEulerAngle;
+
+        
+        !bDummy := placeMarkerAtPixel([1540,1000,70], pxPreOffset, nAnglePreTransform, pxDummy, \moveCamera?moveCamera, \angular);
+        !pxPreOffset.u := 1540;
+        !pxPreOffset.v := 1000;
         
         ! Reset the new working plane.... 
         pStart := getCurrentRobtarget(\tTool:=tTempTool);
-        bDummy := placeMarkerAtPixel([1100,210,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
+        bDummy := placeMarkerAtPixel([640,480,70], pxPreOffset, nPreTransform, pxDummy, \moveCamera?moveCamera, \restrictZ);
 
         
         Stop \AllMoveTasks;
@@ -341,6 +350,36 @@ MODULE MainModule
         
         
     ENDPROC
+    
+    
+    LOCAL FUNC pixel getNewOffset(pos psEulerAngle, pixel pxOldCalibOffset, num nAngleTransform{*,*}, \switch moveCamera)
+        VAR pixel pxNewCalibOffset;
+        VAR num nCoords{3};
+        VAR num nRelAngleTarget{3};
+        VAR num nAngleInvTransform{3,3};
+        
+        ! Do not rotate around Z axis, since it will not change the positon of the image (and is likely not calibrated at all). 
+        IF psEulerAngle.z <> 0 THEN
+            TPWrite "Z should be 0, ignores the Z rotation.";
+            psEulerAngle.z := 0;
+        ENDIF
+        
+        nRelAngleTarget{1} := psEulerAngle.x;
+        nRelAngleTarget{2} := psEulerAngle.y;
+        nRelAngleTarget{3} := psEulerAngle.z;
+        
+        invert2DMatrix nAngleTransform, nAngleInvTransform;
+        
+        MatrixMultiply2 nAngleInvTransform, nRelAngleTarget, nCoords;
+        pxNewCalibOffset.u := nCoords{1} + pxOldCalibOffset.u;
+        pxNewCalibOffset.v := nCoords{2} + pxOldCalibOffset.v;
+        pxNewCalibOffset.scale := nCoords{3} + pxOldCalibOffset.scale;
+                    
+        RETURN pxNewCalibOffset;
+    ENDFUNC
+    
+    
+    
     
     
     LOCAL PROC SolveHandEyeEquation(num nNumPoses, orient orRob2Cam, pose peRob2Wrist{*}, pos psCam2Marker{*}, INOUT pos psRob2Cam)
