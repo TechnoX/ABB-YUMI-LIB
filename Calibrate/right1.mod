@@ -103,15 +103,14 @@ MODULE MainModule
         ! Should be the marker arm that call the calibration routine. 
         bMoveThisArm := TRUE;
         
-        
         CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
         
+        ! Return values for the maker
         tMarker.robhold := TRUE;
         tMarker.tframe := peMarkerWrist2Marker;
-        
+        ! Return values for the camera
         wCamera.robhold := FALSE;
         wCamera.ufprog := TRUE;
-        
         wCamera.uframe := peRob2Cam;
         wCamera.oframe := [[0,0,0],[1,0,0,0]];
     ENDPROC
