@@ -535,16 +535,6 @@ MODULE MainModule
         RETURN nDistance;
     ENDFUNC
     
-    LOCAL PROC getExtSAndU2(orient orRob2Cam, pixel pxPreOffset, num nPreTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints)
-        CONST target pxTargets{1} := [[[pxImageSize.u / 2 - 100, pxImageSize.v / 2 - 100, 70], [pxImageSize.u / 2 + 100, pxImageSize.v / 2 + 100, 70], [40,0,0]]];
-        
-        ! Loop through all good points to look at
-        !FOR i FROM 1 TO Dim(pxTargets,1) DO
-        !    
-        !ENDFOR
-    ENDPROC
-    
-    
     LOCAL PROC getExtSAndU(pixel pxPreOffset, num nPreTransform{*,*}, num nPreAngleTransform{*,*}, INOUT pose peS{*}, INOUT pixel pxU{*}, INOUT num nNumPoints, \switch moveCamera)
         VAR pixel pxFirstMarker;
         VAR pixel pxSecondMarker;
@@ -634,11 +624,6 @@ MODULE MainModule
         PrintLog "Second marker found";
         pStart := pOldStart;
         RETURN TRUE;
-    ENDFUNC
-    
-    ! Find second type by just moving in X and Y direction of the camera centered coordinate system
-    LOCAL FUNC bool findSecondMarker(pos relativeMovement)
-        RETURN FALSE;
     ENDFUNC
     
     ! Moves to a relative position (translation) in the camera frame
