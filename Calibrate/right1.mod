@@ -77,8 +77,8 @@ MODULE MainModule
         
         ! Run ONE of the below examples
         !CalibrateExternalCamera wCamera, tMarker, dnK;
-        !CalibrateHandCamera tCamera, tMarker, dnK;
-        CalibrateHandCamera tCamera, tMarker, dnK, \moveCamera;
+        !CalibrateHandCameraMovingMarker tCamera, tMarker, dnK;
+        CalibrateHandCameraFixMarker tCamera, psMarker, dnK;
         
         Stop \AllMoveTasks;
     ENDPROC
@@ -115,50 +115,70 @@ MODULE MainModule
         wCamera.oframe := [[0,0,0],[1,0,0,0]];
     ENDPROC
 
-    ! Calibrate a HandHeld Camera. 
-    ! Move camera or move Calibration marker. Default is to move calibration marker. 
-    PROC CalibrateHandCamera(INOUT tooldata tCamera, INOUT tooldata tMarker, INOUT dnum dnK{*,*}, \switch moveCamera)
+    ! Calibrate a HandHeld Camera with stationary camera (moving marker)
+    PROC CalibrateHandCameraMovingMarker(INOUT tooldata tCamera, INOUT tooldata tMarker, INOUT dnum dnK{*,*})
         VAR pose peRob2Cam;
         ! Robtarget to the wrist that is holding the camera hand that is being calibrated
         VAR robtarget pRob2CamWrist;
-        
         VAR pose peMarkerWrist2Marker;
-        VAR pose peCamWrist2Cam;
-        VAR pose peCamWrist2Rob;
         
         IF DIM(dnK,1) <> 3 OR Dim(dnK,2) <> 3 THEN
             RAISE ERR_ILLDIM;
         ENDIF
         
-        PrintLog "Calibrate hand held camera";
-        IF Present(moveCamera) THEN
-            PrintLog "While moving the camera";
-            bMoveThisArm := TRUE;
-        ELSE
-            PrintLog "While moving the calibration marker";
-            bMoveThisArm := FALSE;
-        ENDIF
+        PrintLog "Calibrate hand held camera while moving marker";
+        bMoveThisArm := FALSE;
         
         ! Setup camera device
         setUpCameraDevice; 
-        IF Present(moveCamera) THEN
-            pRob2CamWrist := getCurrentRobtarget();
-        ELSE
-            pRob2CamWrist := getCurrentRobtarget(\other);
-        ENDIF
+        pRob2CamWrist := getCurrentRobtarget(\other);
         
-        CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK, \moveCamera?moveCamera;
+        CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK;
         
-        peCamWrist2Rob := PoseInv([pRob2CamWrist.trans, pRob2CamWrist.rot]);
-        peCamWrist2Cam := PoseMult(peCamWrist2Rob, peRob2Cam);
-        
-        ! NOTE: tMarker makes no sense if we have a moving camera, since the marker is probably located on a screen or fixture somewhere, not a wrist.... 
+        ! Return value for marker
         tMarker.robhold := TRUE;
         tMarker.tframe := peMarkerWrist2Marker;
-        
+        ! Return value for camera
         tCamera.robhold := TRUE;
-        tCamera.tframe := peCamWrist2Cam;
+        tCamera.tframe := ConvertFromBaseToWrist([pRob2CamWrist.trans, pRob2CamWrist.rot], peRob2Cam);
     ENDPROC
+    
+    ! Calibrate with moving camera (fix marker)
+    PROC CalibrateHandCameraFixMarker(INOUT tooldata tCamera, INOUT pos psMarker, INOUT dnum dnK{*,*})
+        VAR pose peRob2Cam;
+        ! Robtarget to the wrist that is holding the camera hand that is being calibrated
+        VAR robtarget pRob2CamWrist;
+        
+        VAR pose peRob2Marker;
+        
+        IF DIM(dnK,1) <> 3 OR Dim(dnK,2) <> 3 THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
+        
+        PrintLog "Calibrate hand held camera while moving camera";
+        bMoveThisArm := TRUE;
+        
+        ! Setup camera device
+        setUpCameraDevice;
+        pRob2CamWrist := getCurrentRobtarget();
+        
+        CalibrateInternal peRob2Cam, peRob2Marker, dnK, \moveCamera;
+        
+        ! Return value for marker
+        psMarker := peRob2Marker.trans;
+        ! Return value for camera
+        tCamera.robhold := TRUE;
+        tCamera.tframe := ConvertFromBaseToWrist([pRob2CamWrist.trans, pRob2CamWrist.rot], peRob2Cam);
+    ENDPROC
+    
+    ! Transform the pRob2CamWrist from the base robot coordinate system to the wrist coordinate system
+    LOCAL FUNC pose ConvertFromBaseToWrist(pose peRob2CamWrist, pose peRob2Cam)
+        VAR pose peCamWrist2Cam;
+        VAR pose peCamWrist2Rob;
+        peCamWrist2Rob := PoseInv(peRob2CamWrist);
+        peCamWrist2Cam := PoseMult(peCamWrist2Rob, peRob2Cam);
+        RETURN peCamWrist2Cam;
+    ENDFUNC
     
     
     LOCAL PROC CalibrateInternal(INOUT pose peRob2Cam, INOUT pose peMarkerWrist2Marker, INOUT dnum dnK{*,*}, \switch moveCamera)
