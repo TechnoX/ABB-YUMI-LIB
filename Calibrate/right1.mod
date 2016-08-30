@@ -1317,7 +1317,7 @@ MODULE MainModule
     LOCAL FUNC bool RequestImage(INOUT pixel px)
         VAR cameratarget tgt;
         CamReqImage cameraToUse;
-        CamGetResult cameraToUse,tgt\MaxTime:=5;
+        CamGetResult cameraToUse,tgt\MaxTime:=10;
         !WaitTime 2.0;
         px.u := tgt.cframe.trans.x;
         px.v := tgt.cframe.trans.y;
