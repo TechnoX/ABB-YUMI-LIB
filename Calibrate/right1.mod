@@ -306,14 +306,15 @@ MODULE MainModule
         VAR Pose peRob2MovingWrist{nMaxExtPoints};
         ! This is called U_ext in the paper on page 5.
         VAR pixel pxU{nMaxExtPoints};
-        ! Called ct in paper
-        VAR pos psCam2Marker{nMaxExtPoints};
         ! The number of points used for second phase (reorientations), this is number 2*n in the paper
         ! Needs to be even for obvious reasons (n is an integer).
         VAR num nNumPoints;
         ! Called t_ext in paper
         VAR pos psRob2Cam;
-        
+        ! Pose of the marker in the camera frame
+        VAR pose peCam2Marker{nMaxExtPoints};
+                
+                
         IF Dim(nKInv,1) <> 3 OR Dim(nKInv,2) <> 3 THEN
             RAISE ERR_ILLDIM;
         ENDIF
@@ -331,17 +332,18 @@ MODULE MainModule
         
         getExtSAndU pxPreOffset, nPreTransform, nAnglePreTransform, peRob2MovingWrist, pxU, nNumPoints, \moveCamera?moveCamera;
         
-        ! Equation (14) and (15) in paper
-        getPointsInCameraFrame nNumPoints, peRob2MovingWrist, pxU, nKinv, psCam2Marker;
+        ! Equation (14), (15) and (17) in paper
+        !getPointsInCameraFrame nNumPoints, orRob2Cam, orCamWrist2Cam, peRob2MovingWrist, pxU, nKinv, peCam2Marker;
+        getPointsInCameraFrame nNumPoints, peRob2MovingWrist, pxU, nKInv,\orCamWrist2Cam:=orCamWrist2Cam, \orRob2Cam:=orRob2Cam, \moveCamera?moveCamera, peCam2Marker;
         
         ! Part three!! 
         PrintLog "Done with phase 2";
         
-        SolveHandEyeEquation nNumPoints, orRob2Cam, orCamWrist2Cam, peRob2MovingWrist, psCam2Marker, \moveCamera?moveCamera, psRob2Cam;
+        SolveHandEyeEquation orRob2Cam, peRob2MovingWrist, peCam2Marker, psRob2Cam;
+        
+        
         peRob2Cam.rot := orRob2Cam;
         peRob2Cam.trans := psRob2Cam;
-        
-        
     ENDPROC
     
     
@@ -373,8 +375,7 @@ MODULE MainModule
     
     
     ! orRob2Cam: The original rotation of the camera, before any rotations of it. 
-    LOCAL PROC SolveHandEyeEquation(num nNumPoses, orient orRob2Cam, orient orCamWrist2Cam, pose peRob2MovingWrist{*}, pos psCam2Marker{*}, \switch moveCamera, INOUT pos psRob2Cam)
-        VAR pose peCam2Marker{nMaxExtPoints};
+    LOCAL PROC SolveHandEyeEquation(orient orRob2Cam, pose peRob2MovingWrist{*}, pose peCam2Marker{*}, INOUT pos psRob2Cam)
         ! A in the paper on p. 6 (TODO: Should be given a more descriptive name)
         ! Wrist movement (in robot frame) between two images
         VAR pose peA{nMaxPairs};
@@ -385,20 +386,9 @@ MODULE MainModule
         VAR num nNumPairs := 6;
         ! Maybe take nPairs as an argument?? As it depends on the number of avaliable images/poses and may vary... 
         CONST num nPairs{nMaxPairs,2} := [[1,3],[2,4],[7,6],[3,8],[1,4],[1,6]];
-        ! User defined rotation of the marker (when the camera is moving), the marker can for example be a sticker fastened to a wall. 
-        CONST orient orRob2Marker := [1,0,0,0];
-        
-        ! Equation (17)
-        ! TODO: Refactor the call to createCam2Marker up one level to the function before, i.e. inside getPointsInCameraFrame. I think it belongs more there...
-        IF Present(moveCamera) THEN
-            createCam2Marker nNumPoses, \orCamWrist2Cam:=orCamWrist2Cam, \orRob2Marker:=orRob2Marker, peRob2MovingWrist, psCam2Marker, \moveCamera, peCam2Marker;
-        ELSE
-            createCam2Marker nNumPoses, \orRob2Cam:=orRob2Cam, peRob2MovingWrist, psCam2Marker, peCam2Marker;
-        ENDIF
         
         ! Equation (18) and (19)
         createAB nNumPairs, nPairs, peRob2MovingWrist, peCam2Marker, peA, peB;
-        
         
         ! Equation (22)
         getTExt nNumPairs, orRob2Cam, peA, peB, psRob2Cam;
@@ -467,23 +457,30 @@ MODULE MainModule
     ENDPROC
     
     
+        
+    ! Equation (14), (15) and (17) in paper
     ! Augment the position data from the camera to include orientation, assigning the same orientation to the calibration marker as measured for the robot wrist
     ! orRob2Cam: Orientation of the camera coorinate fram in the robot base)
     ! peRob2Wrist: Position and orientation of the wrist holding the camera, when moving camera, in robot base coordinate system
     ! psCam2Marker: Position of the marker in the camera centered coordinate system
     ! peCam2Marker: OUTPUT The position and orientation of the marker in the camera coordinate system. 
-    LOCAL PROC createCam2Marker(num nNumPoses, \orient orCamWrist2Cam | orient orRob2Cam, \orient orRob2Marker,
-                                pose peRob2MovingWrist{*}, pos psCam2Marker{*}, \switch moveCamera, INOUT pose peCam2Marker{*})
+    LOCAL PROC getPointsInCameraFrame(num nNumPoses, pose peRob2MovingWrist{*}, pixel pxU{*}, num nKinv{*,*}, 
+                                      \orient orCamWrist2Cam, \orient orRob2Cam, \switch moveCamera, INOUT pose peCam2Marker{*})
+        VAR num nDistance;
+        ! Called ct in paper
+        VAR pos psCam2Marker{nMaxExtPoints};
         VAR orient orCam2Rob;
         VAR orient orCam2MarkerWrist;
+        ! User defined rotation of the marker (when the camera is moving), the marker can for example be a sticker fastened to a wall. 
+        CONST orient orRob2Marker := [1,0,0,0];
+        
+        IF Dim(peRob2MovingWrist,1) < nNumPoses OR Dim(pxU,1) < nNumPoses OR Dim(psCam2Marker,1) < nNumPoses THEN
+            RAISE ERR_ILLDIM;
+        ENDIF
         
         IF Present(moveCamera) THEN
             IF NOT Present(orCamWrist2Cam) THEN
                 PrintLog "Must specify CamWrist2Cam when move camera";
-                RAISE ERR_NOTPRES;
-            ENDIF
-            IF NOT Present(orRob2Marker) THEN
-                PrintLog "Must specify desired orMarker when move camera";
                 RAISE ERR_NOTPRES;
             ENDIF
         ELSE
@@ -492,30 +489,8 @@ MODULE MainModule
                 RAISE ERR_NOTPRES;
             ENDIF
         ENDIF
-            
         
-        FOR i FROM 1 TO nNumPoses DO
-            IF Present(moveCamera) THEN
-                orCam2Rob := QuatInv(peRob2MovingWrist{i}.rot * orCamWrist2Cam);
-                orCam2MarkerWrist := orCam2Rob * orRob2Marker;
-            ELSE
-                orCam2Rob := QuatInv(orRob2Cam);
-                orCam2MarkerWrist := orCam2Rob * peRob2MovingWrist{i}.rot;
-            ENDIF
-
-            ! Set the marker coordinate system to the same as the wrist have. 
-            peCam2Marker{i}.rot := orCam2MarkerWrist;
-            peCam2Marker{i}.trans := psCam2Marker{i};
-        ENDFOR
-    ENDPROC
         
-    ! Equation (14) and (15) in paper
-    LOCAL PROC getPointsInCameraFrame(num nNumPoses, pose peRob2MovingWrist{*}, pixel pxU{*}, num nKinv{*,*}, INOUT pos psCam2Marker{*})
-        VAR num nDistance; 
-        
-        IF Dim(peRob2MovingWrist,1) < nNumPoses OR Dim(pxU,1) < nNumPoses OR Dim(psCam2Marker,1) < nNumPoses THEN
-            RAISE ERR_ILLDIM;
-        ENDIF
         
         ! For all detected points
         FOR i FROM 1 TO nNumPoses/2 DO
@@ -528,7 +503,22 @@ MODULE MainModule
             ! Project the pixel back to a 3D coordinate, equation (15) 
             psCam2Marker{2*i-1} := backProjectPixel(pxU{2*i-1}, nKInv, nDistance);
             psCam2Marker{2*i}   := backProjectPixel(pxU{2*i},   nKInv, nDistance);
-            
+        ENDFOR
+        
+        ! TODO: Merge with loop above! 
+        FOR i FROM 1 TO nNumPoses DO
+            IF Present(moveCamera) THEN
+                orCam2Rob := QuatInv(peRob2MovingWrist{i}.rot * orCamWrist2Cam);
+                orCam2MarkerWrist := orCam2Rob * orRob2Marker;
+            ELSE
+                ! Equation (17)
+                orCam2Rob := QuatInv(orRob2Cam);
+                orCam2MarkerWrist := orCam2Rob * peRob2MovingWrist{i}.rot;
+            ENDIF
+
+            ! Set the marker coordinate system to the same as the wrist have. 
+            peCam2Marker{i}.rot := orCam2MarkerWrist;
+            peCam2Marker{i}.trans := psCam2Marker{i};
         ENDFOR
     ENDPROC
     
