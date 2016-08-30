@@ -4,7 +4,7 @@ MODULE MainModule
         num u; ! Horizontal in computer viewed image
         num v; ! Vertical in computer viewed image
         ! If scale is used for a detection it can be saved in the pixel record. Otherwise uninitialized; 
-        num scale; 
+        num scale;
         ! angle around Z axis in camera coordinate system
         !num Rz;
     ENDRECORD
@@ -71,7 +71,7 @@ MODULE MainModule
         
         ! Wait for other task
         WaitTime 1;
-        ! TOOD: Use WaitSyncTask to be sure the other arm is standing still after its MoveAbsJ instruction
+        ! TODO: Use WaitSyncTask to be sure the other arm is standing still after its MoveAbsJ instruction
         
         ! Important that both arms have been moved to their initial positions before you call one of the routines below. 
         
@@ -79,23 +79,6 @@ MODULE MainModule
         !CalibrateExternalCamera wCamera, tMarker, dnK;
         !CalibrateHandCamera tCamera, tMarker, dnK;
         CalibrateHandCamera tCamera, tMarker, dnK, \moveCamera;
-        !bMoveThisArm := TRUE;
-        
-        
-        !pStart := getCurrentRobtarget(\tTool:=tTempTool);
-        
-        !MoveInCameraFramePlane [0,0,100];
-        !MoveInCameraFramePlane [0,0,-100];
-        !MoveInCameraFramePlane [0,100,0];
-        !MoveInCameraFramePlane [0,-100,0];
-        !MoveInCameraFramePlane [100,0,0];
-        !MoveInCameraFramePlane [-100,0,0];
-        
-        
-        !MoveInCameraFramePlane [0,100,100],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,20];
-        !MoveInCameraFramePlane [0,-200,0],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,20];
-        !MoveInCameraFramePlane [100,100,0],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,-20];
-        !MoveInCameraFramePlane [-200,0,0],[0.5,-0.5,0.5,0.5],\psEulerAngle:=[0,0,-20];
         
         Stop \AllMoveTasks;
     ENDPROC
@@ -124,7 +107,6 @@ MODULE MainModule
         
         tMarker.robhold := TRUE;
         tMarker.tframe := peMarkerWrist2Marker;
-        tMarker.tload := [0.001, peMarkerWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
         
         wCamera.robhold := FALSE;
         wCamera.ufprog := TRUE;
@@ -164,22 +146,18 @@ MODULE MainModule
         ELSE
             pRob2CamWrist := getCurrentRobtarget(\other);
         ENDIF
-        WaitTime 5;
+        
         CalibrateInternal peRob2Cam, peMarkerWrist2Marker, dnK, \moveCamera?moveCamera;
         
-        MoveL pStart, vSpeed, fine, tTempTool, \WObj:=wobj0;
-
         peCamWrist2Rob := PoseInv([pRob2CamWrist.trans, pRob2CamWrist.rot]);
         peCamWrist2Cam := PoseMult(peCamWrist2Rob, peRob2Cam);
         
         ! NOTE: tMarker makes no sense if we have a moving camera, since the marker is probably located on a screen or fixture somewhere, not a wrist.... 
         tMarker.robhold := TRUE;
         tMarker.tframe := peMarkerWrist2Marker;
-        tMarker.tload := [0.001, peMarkerWrist2Marker.trans, [1, 0, 0, 0], 0, 0, 0];
         
         tCamera.robhold := TRUE;
         tCamera.tframe := peCamWrist2Cam;
-        tCamera.tload := [0.001, peCamWrist2Cam.trans, [1, 0, 0, 0], 0, 0, 0];
     ENDPROC
     
     
@@ -387,17 +365,15 @@ MODULE MainModule
         ! Maybe take nPairs as an argument?? As it depends on the number of avaliable images/poses and may vary... 
         CONST num nPairs{nMaxPairs,2} := [[1,3],[2,4],[7,6],[3,8],[1,4],[1,6]];
         ! User defined rotation of the marker (when the camera is moving), the marker can for example be a sticker fastened to a wall. 
-        CONST orient orMarker := [1,0,0,0];
+        CONST orient orRob2Marker := [1,0,0,0];
         
         ! Equation (17)
         ! TODO: Refactor the call to createCam2Marker up one level to the function before, i.e. inside getPointsInCameraFrame. I think it belongs more there...
         IF Present(moveCamera) THEN
-            createCam2Marker nNumPoses, \orCamWrist2Cam:=orCamWrist2Cam, \orMarker:=orMarker, peRob2MovingWrist, psCam2Marker, \moveCamera, peCam2Marker;
+            createCam2Marker nNumPoses, \orCamWrist2Cam:=orCamWrist2Cam, \orRob2Marker:=orRob2Marker, peRob2MovingWrist, psCam2Marker, \moveCamera, peCam2Marker;
         ELSE
             createCam2Marker nNumPoses, \orRob2Cam:=orRob2Cam, peRob2MovingWrist, psCam2Marker, peCam2Marker;
         ENDIF
-        
-        Stop \AllMoveTasks;
         
         ! Equation (18) and (19)
         createAB nNumPairs, nPairs, peRob2MovingWrist, peCam2Marker, peA, peB;
@@ -475,7 +451,8 @@ MODULE MainModule
     ! peRob2Wrist: Position and orientation of the wrist holding the camera, when moving camera, in robot base coordinate system
     ! psCam2Marker: Position of the marker in the camera centered coordinate system
     ! peCam2Marker: OUTPUT The position and orientation of the marker in the camera coordinate system. 
-    LOCAL PROC createCam2Marker(num nNumPoses, \orient orCamWrist2Cam | orient orRob2Cam, \orient orMarker, pose peRob2MovingWrist{*}, pos psCam2Marker{*}, \switch moveCamera, INOUT pose peCam2Marker{*})
+    LOCAL PROC createCam2Marker(num nNumPoses, \orient orCamWrist2Cam | orient orRob2Cam, \orient orRob2Marker,
+                                pose peRob2MovingWrist{*}, pos psCam2Marker{*}, \switch moveCamera, INOUT pose peCam2Marker{*})
         VAR orient orCam2Rob;
         VAR orient orCam2MarkerWrist;
         
@@ -484,7 +461,7 @@ MODULE MainModule
                 PrintLog "Must specify CamWrist2Cam when move camera";
                 RAISE ERR_NOTPRES;
             ENDIF
-            IF NOT Present(orMarker) THEN
+            IF NOT Present(orRob2Marker) THEN
                 PrintLog "Must specify desired orMarker when move camera";
                 RAISE ERR_NOTPRES;
             ENDIF
@@ -499,7 +476,7 @@ MODULE MainModule
         FOR i FROM 1 TO nNumPoses DO
             IF Present(moveCamera) THEN
                 orCam2Rob := QuatInv(peRob2MovingWrist{i}.rot * orCamWrist2Cam);
-                orCam2MarkerWrist := orCam2Rob * orMarker;
+                orCam2MarkerWrist := orCam2Rob * orRob2Marker;
             ELSE
                 orCam2Rob := QuatInv(orRob2Cam);
                 orCam2MarkerWrist := orCam2Rob * peRob2MovingWrist{i}.rot;
@@ -546,7 +523,7 @@ MODULE MainModule
         psRes.x := nCoord{1,1};
         psRes.y := nCoord{2,1};
         psRes.z := nCoord{3,1};
-          
+        
         psRes := psRes * nDistance;
         
         RETURN psRes;
@@ -670,14 +647,6 @@ MODULE MainModule
     ! With an optional rotation of the wrist relative camera center coordinate system
     ! NOTE: pStart needs to be calculated with the orientation from orCamWrist2Cam somewhere before (and the same orientation should be in tTempTool!)
     LOCAL PROC MoveInCameraFramePlane(pos relativeMovement, \pos psEulerAngle, \switch restrictZ)
-        VAR num Rx := 0;
-        VAR num Ry := 0;
-        VAR num Rz := 0;
-        IF Present(psEulerAngle) THEN
-            Rx := psEulerAngle.x;
-            Ry := psEulerAngle.x;
-            Rz := psEulerAngle.z;
-        ENDIF
         IF Present(restrictZ) THEN
             relativeMovement.z := 0;
         ENDIF
@@ -772,10 +741,6 @@ MODULE MainModule
         Move(pStart);! Not neccesary!?
         orRob2Cam := peRob2CHat.rot;
         psRob2CHat := peRob2CHat.trans;
-        
-        ! TODO: Refine calibration result with non linear optimization, including distortion
-        !CalibIntNonLin psS,psU,nNumPoses,peRob2Cam,dnK;
-        
         
         ! Returns psCHat2Rob, orRob2Cam and K (and Kinv) values. Done with phase one.  
     ENDPROC
