@@ -111,7 +111,7 @@ MODULE MainModule
             RAISE ERR_ILLDIM;
         ENDIF
         
-        TPWrite "Calibrate fix camera rig";
+        PrintLog "Calibrate fix camera rig";
         
         ! Setup camera device
         setUpCameraDevice; 
@@ -148,12 +148,12 @@ MODULE MainModule
             RAISE ERR_ILLDIM;
         ENDIF
         
-        TPWrite "Calibrate hand held camera";
+        PrintLog "Calibrate hand held camera";
         IF Present(moveCamera) THEN
-            TPWrite "While moving the camera";
+            PrintLog "While moving the camera";
             bMoveThisArm := TRUE;
         ELSE
-            TPWrite "While moving the calibration marker";
+            PrintLog "While moving the calibration marker";
             bMoveThisArm := FALSE;
         ENDIF
         
@@ -252,12 +252,15 @@ MODULE MainModule
     LOCAL FUNC robtarget getCurrentRobtarget(\PERS tooldata tTool, \switch other)
         IF Present(other) XOR bMoveThisArm THEN
             IF Present(tTool) THEN
+                PrintLog "Get incorrect";
                 RETURN CRobT(\Tool:=tTool,\WObj:=wobj0);
             ELSE
+                PrintLog "Get correct position";
                 RETURN CRobT(\Tool:=tool0,\WObj:=wobj0);
             ENDIF
 
         ELSE
+            PrintLog "Get (left) incorrect";
             ! TODO: Fix this to work for both left and right arm. 
             RETURN CRobT(\TaskName:="T_ROB_L",\Tool:=tool0,\WObj:=wobj0);
         ENDIF
@@ -340,7 +343,7 @@ MODULE MainModule
         
         ! Do not rotate around Z axis, since it will not change the positon of the image (and is likely not calibrated at all). 
         IF psEulerAngle.z <> 0 THEN
-            TPWrite "Z should be 0, ignores the Z rotation.";
+            PrintLog "Z should be 0, ignores the Z rotation.";
             psEulerAngle.z := 0;
         ENDIF
         
@@ -386,7 +389,7 @@ MODULE MainModule
         ! Equation (22)
         getTExt nNumPairs, orRob2Cam, peA, peB, psRob2Cam;
         
-        TPWrite "Done with part 3";
+        PrintLog "Done with part 3";
     ENDPROC
 
     
@@ -563,13 +566,13 @@ MODULE MainModule
         nNumPoints := 0;
         ! Loop through all good points to look at
         FOR i FROM 1 TO Dim(targets,1) DO
-            TPWrite "Search for angle #"\Num:=i;
+            PrintLog "Search for angle #"\n:=i;
             bFound := FALSE;
             WHILE NOT bFound DO
                 ! TODO: Fix so this not enters an infinite loop. This should be skipped after N tries. Important!!
                 bFound := findMarkers(targets{i}, pxPreOffset, nPreAngleTransform, nPreTransform, \moveCamera?moveCamera, pxFirstMarker, pxSecondMarker, pFirstTarget, pSecondTarget);
                 IF NOT bFound THEN
-                    TPWrite "Can't see first marker! Decrease angle";
+                    PrintLog "Can't see first marker! Decrease angle";
                     ! Decrease angle
                     targets{i}.psAngle := targets{i}.psAngle * decreaseFactor;
                 ENDIF
@@ -615,20 +618,20 @@ MODULE MainModule
             RETURN FALSE;
         ENDIF
         pFirstTarget := getCurrentRobtarget();
-        TPWrite "First marker found";
+        PrintLog "First marker found";
         
         
         ! NOTE: When going to next point we are restricting the Z (optical axis) to not move at all.
         WHILE NOT placeMarkerAtPixel(t.pxTo, pxTempOffset, nPreTransTransform, pxSecondMarker, \moveCamera?moveCamera, \restrictZ, \nMaxDistance:=400) DO
             ! TODO: Fix so this not enters an infinite loop. This translation should be skipped after N tries. Important!!
-            TPWrite "Can't see second marker, decrease distance";
+            PrintLog "Can't see second marker, decrease distance";
             nDist := nDist * nDecreaseFactor;
             t.pxTo.u := t.pxFrom.u + nDist * (t.pxTo.u - t.pxFrom.u);
             t.pxTo.v := t.pxFrom.v + nDist * (t.pxTo.v - t.pxFrom.v);
             t.pxTo.scale := t.pxFrom.scale + nDist * (t.pxTo.scale - t.pxFrom.scale);
         ENDWHILE
         pSecondTarget := getCurrentRobtarget();
-        TPWrite "Second marker found";
+        PrintLog "Second marker found";
         pStart := pOldStart;
         RETURN TRUE;
     ENDFUNC
@@ -757,9 +760,9 @@ MODULE MainModule
         VAR dnum dnP_test{3,4};
         
         MatrixMultiplyDnum dnK,[[dnR{1,1},dnR{1,2},dnR{1,3},dnT{1,1}],[dnR{2,1},dnR{2,2},dnR{2,3},dnT{2,1}],[dnR{3,1},dnR{3,2},dnR{3,3},dnT{3,1}]],dnP_test;
-        TPWrite "P Error=";
+        PrintLog "P Error=";
         FOR i FROM 1 TO 3 DO
-            TPWrite "["+dnumtostr(dnP{i,1}-dnP_test{i,1},3)+","+dnumtostr(dnP{i,2}-dnP_test{i,2},3)+","+dnumtostr(dnP{i,3}-dnP_test{i,3},3)+","+dnumtostr(dnP{i,4}-dnP_test{i,4},3)+"]";
+            PrintLog "["+dnumtostr(dnP{i,1}-dnP_test{i,1},3)+","+dnumtostr(dnP{i,2}-dnP_test{i,2},3)+","+dnumtostr(dnP{i,3}-dnP_test{i,3},3)+","+dnumtostr(dnP{i,4}-dnP_test{i,4},3)+"]";
         ENDFOR
     ENDPROC
     
@@ -770,7 +773,7 @@ MODULE MainModule
         VAR pixel pxBackProjectedError;
         
         !Calculate back projection error
-        TPWrite "Back Projection Error=";
+        PrintLog "Back Projection Error=";
         FOR i FROM 1 TO nNumPoses DO
             dnHomoCoord := [[NumToDnum(psRob2Wrist{i}.x)],[NumToDnum(psRob2Wrist{i}.y)],[NumToDnum(psRob2Wrist{i}.z)],[1]];
             MatrixMultiplyDnum dnP,dnHomoCoord,dnHomoPixel;
@@ -781,7 +784,7 @@ MODULE MainModule
             pxBackProjectedError.u := DnumToNum(dnHomoPixel{1,1}) - pxU{i}.u;
             pxBackProjectedError.v := DnumToNum(dnHomoPixel{2,1}) - pxU{i}.v;
             ! Print error
-            TPWrite "error u: " + NumToStr(pxBackProjectedError.u,3) + ", v: " + NumToStr(pxBackProjectedError.v,3);
+            PrintLog "error u: " + NumToStr(pxBackProjectedError.u,3) + ", v: " + NumToStr(pxBackProjectedError.v,3);
             WaitTime 1;
         ENDFOR
     ENDPROC
@@ -1040,7 +1043,7 @@ MODULE MainModule
             IF placeMarkerAtPixel(pxGoodPointsToVisit{px}, pxCalibOffset, nTransform, pxDetectedMarker\nMaxDistance:=220) THEN
                 temp := getCurrentRobtarget();
                 psS{nIndex} := temp.trans;
-                TPWrite "Saves pixel "\Num:=px;
+                PrintLog "Saves pixel "\n:=px;
                 pxU{nIndex} := pxDetectedMarker;
                 Incr nIndex;
             ENDIF
@@ -1056,7 +1059,7 @@ MODULE MainModule
         VAR bool bDummy;
         
         IF DIM(transform,1) <> 3 OR DIM(transform,1) <> 3 THEN
-            TPWrite "The transform must be of size 3x3";
+            PrintLog "The transform must be of size 3x3";
             RAISE ERR_ILLDIM;
         ENDIF
         
@@ -1101,12 +1104,12 @@ MODULE MainModule
             ! Do not rotate around Z axis, since it will not change the positon of the image (and is not calibrated at all). 
             psRelPos.z := 0; ! TODO: Isn't this already 0 in all cases, because last row in transform will be 0 0 0???
             IF NOT getMarkerInfoAtPos([0,0,0], pxDetectedMarker, \moveCamera?moveCamera, \psEulerAngle:=psRelPos) THEN
-                TPWrite "Marker not detected! Not saved!";
+                PrintLog "Marker not detected! Not saved!";
                 RETURN FALSE;
             ENDIF
         ELSE
             IF NOT getMarkerInfoAtPos(psRelPos, pxDetectedMarker, \moveCamera?moveCamera, \psEulerAngle?psEulerAngle, \restrictZ?restrictZ) THEN
-                TPWrite "Marker not detected! Not saved!";
+                PrintLog "Marker not detected! Not saved!";
                 RETURN FALSE;
             ENDIF
         ENDIF
@@ -1115,7 +1118,7 @@ MODULE MainModule
         nDist := getPixelDistance(pxDetectedMarker, pxTarget);
         !TPWrite "Pixel distance: "\Num:=nDist;
         IF nDist > nMaxDist THEN
-            TPWrite "Marker detected at wrong location in image!! "\Num:=nDist;
+            PrintLog "Marker detected at wrong location in image!! "\n:=nDist;
             RETURN FALSE;
         ENDIF
         
@@ -1131,7 +1134,7 @@ MODULE MainModule
         VAR num nDistances{3};
         VAR pixel nPixelDistances{3};
         IF DIM(nTransform,1) <> 3 OR DIM(nTransform,1) <> 3 THEN
-            TPWrite "The transform must be of size 3x3";
+            PrintLog "The transform must be of size 3x3";
             RAISE ERR_ILLDIM;
         ENDIF
         ! Moves in X direction of robot-frame and get moved distance in X and pixels. 
@@ -1231,7 +1234,7 @@ MODULE MainModule
                     ENDWHILE
                 ENDIF
             DEFAULT: 
-                TPWrite "Illegal direction axis specified";
+                PrintLog "Illegal direction axis specified";
                 RAISE ERR_ARGVALERR;
         ENDTEST
 
@@ -1249,7 +1252,7 @@ MODULE MainModule
         pixelDifferences.v := psMaxDetectedMarker.v - psMinDetectedMarker.v;
         pixelDifferences.scale := psMaxDetectedMarker.scale - psMinDetectedMarker.scale;
     ERROR
-        TPWrite "!!!!!!!Error in getMaxVisibleDistance";
+        PrintLog "!!!!!!!Error in getMaxVisibleDistance";
         TRYNEXT;
     ENDPROC
     
@@ -1270,7 +1273,7 @@ MODULE MainModule
         ! Moves the robot
         MoveL pTarget, vSpeed, fine, tool0, \WObj:=wobj0;
     ERROR
-        TPWrite "Destination not reachable";
+        PrintLog "Destination not reachable";
         RETURN;
     ENDPROC
 
@@ -1290,8 +1293,8 @@ MODULE MainModule
     
     LOCAL FUNC bool getMarkerInfoAtPos(pos psRelPos, INOUT pixel detectedMarker, \switch moveCamera, \pos psEulerAngle, \switch restrictZ)
         IF Present(moveCamera) THEN
-            TPWrite "Position: "\Pos:=psRelPos;
-            TPWrite "Angle: "\Pos?psEulerAngle;
+            PrintLog "Position: "\p:=psRelPos;
+            PrintLog "Angle: "\p?psEulerAngle;
             MoveInCameraFramePlane psRelPos, \psEulerAngle?psEulerAngle, \restrictZ?restrictZ;
         ELSE
             moveToPos psRelPos;
@@ -1318,7 +1321,7 @@ MODULE MainModule
         WHILE nNoOffPicture < nMaxTries DO
             IF NOT RequestImage(psCameraResult) THEN
                 Incr nNoOffPicture;
-                TPWrite "Picture not OK. Try no = "\Num:=nNoOffPicture;
+                PrintLog "Picture not OK. Try no = "\n:=nNoOffPicture;
             ELSE
                 RETURN TRUE;
             ENDIF
@@ -1338,12 +1341,18 @@ MODULE MainModule
         RETURN TRUE;
     ERROR
         IF ERRNO=ERR_CAM_MAXTIME THEN
-            TPWrite "Could not find the target";
+            PrintLog "Could not find the target";
             RETURN FALSE;
         ELSEIF ERRNO=ERR_CAM_COM_TIMEOUT THEN
-            TPWrite "Camera communication timeout";
+            PrintLog "Camera communication timeout";
             WaitTime 2.0;
             RETRY;
         ENDIF
-    ENDFUNC    
+    ENDFUNC
+    
+    LOCAL PROC PrintLog(string text,\num n,\pos p)
+        TPWrite text\Num?n\Pos?p;
+        ErrWrite \I, text, "a";
+    ENDPROC
+    
 ENDMODULE
