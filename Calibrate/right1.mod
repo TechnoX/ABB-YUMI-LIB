@@ -45,7 +45,7 @@ MODULE MainModule
     LOCAL CONST num nMaxPairs := 6;
     
     ! Temp tooldata used when passing around variables. Can't create pers inside routine, and tooldata is required to be PERS...
-    LOCAL PERS tooldata tTempTool :=  [TRUE, [[0, 0, 0], [0.504705, -0.496286, -0.511828, -0.486832]], [0.001, [0, 0, 0.001], [1, 0, 0, 0], 0, 0, 0]];
+    LOCAL PERS tooldata tTempTool :=  [TRUE, [[0, 0, 0], [0.504706, -0.496285, -0.511828, -0.486831]], [0.001, [0, 0, 0.001], [1, 0, 0, 0], 0, 0, 0]];
     
     ! Used to pass position data between this and the other Motion Task for moving the other arm. 
     PERS robtarget pLogoTarget;
@@ -56,10 +56,11 @@ MODULE MainModule
     
     
     ! This is for the example code in main(), not used by the calibration routines themselves.  
-    PERS tooldata tMarker := [TRUE, [[25.1338, -61.5402, 3.15781], [1, 0, 0, 0]],
-                             [0.001, [25.1338, -61.5402, 3.15781],[1, 0, 0, 0], 0, 0, 0]];
-    PERS tooldata tCamera := [TRUE, [[-8.74489, 18.5427, -36.3116], [0.504707, -0.496284, -0.511827, -0.486832]],
-                             [0.001, [13.4551, -343.023, -38.3451],[1, 0, 0, 0], 0, 0, 0]];
+    PERS tooldata tMarker := [TRUE, [[25.1346, -61.5402, 3.15772], [1, 0, 0, 0]],
+                             [0.001, [25.1346, -61.5402, 3.15772],[1, 0, 0, 0], 0, 0, 0]];
+    PERS pos psMarker     := [0,0,0];
+    PERS tooldata tCamera := [TRUE, [[-11.9484, 463.001, 25.5243], [0.504708, -0.496284, -0.511827, -0.486832]],
+                             [0.001, [-11.9484, 463.001, 25.5243],[1, 0, 0, 0], 0, 0, 0]];
     PERS wobjdata wCamera := [FALSE, TRUE, "", [[368.467, -111.038, 195.797],[0.506313, -0.448169, 0.522104, 0.519807]],
                              [[0, 0, 0],[1, 0, 0, 0]]];
     PERS dnum dnK{3,3} :=    [[1658.77183634847,-5.66035529628221,635.154210417912],[0,1655.65044493246,471.950729483184],[0,0,1]];
