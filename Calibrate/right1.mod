@@ -546,10 +546,7 @@ MODULE MainModule
         psRes.x := nCoord{1,1};
         psRes.y := nCoord{2,1};
         psRes.z := nCoord{3,1};
-        
-        ! Normalize vector (I think this is necessary? Was not that clear in the former code)
-        psRes := NormalizePos(psRes);
-        
+          
         psRes := psRes * nDistance;
         
         RETURN psRes;
