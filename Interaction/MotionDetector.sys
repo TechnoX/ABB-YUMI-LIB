@@ -1,0 +1,35 @@
+MODULE MotionDetector(SYSMODULE, NOVIEW)
+    
+    LOCAL PERS jointtarget jtStart := [[54.565,-105.429,30.5735,-78.7107,-67.082,91.8715],[-18.2588,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    LOCAL PERS robtarget pOut := [[293.12,-526.85,562.90],[0.574465,0.216187,-0.269276,0.742121],[0,-1,1,1010],[-153.656,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    LOCAL PERS robtarget pUp := [[254.90,-339.34,678.25],[0.641666,-0.0387194,-0.000950979,0.766006],[0,-1,0,1010],[-174.364,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    LOCAL PERS robtarget pIn := [[227.02,-167.49,597.27],[0.638257,-0.261198,0.131177,0.712177],[0,-2,0,1010],[-162.893,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    !LOCAL PERS tooldata tTool := [TRUE, [[0, 0, 136], [1, 0, 0, 0]], [0.23, [8.2, 11.7, 52],[1, 0, 0, 0], 0.00021, 0.00024, 9E-05]];
+    
+    
+    PROC Waving()
+        ! Value before trap
+        VAR robtarget pBefore;
+        !StopMove\Quick; !Prevent current move instruction to continue
+        !StorePath; !For later use
+        pBefore:=CRobT(); !Save current position
+        
+        ! Up to start position 
+        MoveAbsJ jtStart, v600, z100, YuMi_App_move_tool_local;
+        
+        FOR i FROM 1 TO 2 DO    
+            ! Move inward in circle motion
+            MoveC pUp, pIn, v500, \T:=0.4, z30, YuMi_App_move_tool_local;
+            ! Move outward in circle motion
+            MoveC pUp, pOut, v500, \T:=0.4, z30, YuMi_App_move_tool_local;
+        ENDFOR
+        
+        
+
+        MoveJ pBefore,v600,fine,YuMi_App_move_tool_local; !Move back to programmed position
+        !RestoPath; !Restore StorePath
+        !StartMove; !Restore StopMove
+    ENDPROC
+    
+    
+ENDMODULE
