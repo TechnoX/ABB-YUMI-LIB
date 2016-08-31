@@ -1,0 +1,19 @@
+
+    !**********************************************************
+    !*                                                        *
+    !* Module name: Name of the module                        *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:                                           *
+    !*                                                        *
+    !* General description of the module function             *
+    !*                                                        *
+    !*                                                        *
+    !* DEPENDENCIES: <Modules that this depend on>            *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-16   1.0        Fredrik Lofgren      created   *
+    !**********************************************************
+    

@@ -1,0 +1,34 @@
+    !**********************************************************
+    !*                                                        *
+    !* ROUTINE NAME: <name of the routine>                    *
+    !*                                                        *
+    !**********************************************************
+    !*                                                        *
+    !* DESCRIPTION:  <what the procedure does (not how)>      *
+    !*                                                        *
+    !* IN:           <parameter name and description>         *
+    !*                                                        *
+    !* OPTIONAL:     <parameter name and description>         *
+    !*                                                        *
+    !* INOUT:        <parameter name and description>         *
+    !*                                                        *
+    !* RETURN:       <parameter type>                         *
+    !*                                                        *
+    !* ASSUMPTIONS:  <List of each external variable,         *
+    !*               control, open file, or other element     *
+    !*               that is not obvious>                     *
+    !*                                                        *
+    !* EFFECTS:      <list of each affected external variable *
+    !*               control or file and the effect it has    *
+    !*               (only if this is not obvious) >          *
+    !*                                                        *
+    !* NOTE:         <internal remarks (only if this is not   *
+    !*               obvious) >                               *
+    !*                                                        *
+    !* EXAMPLE:      <example, how the routine is used        *
+    !*               (only if this is not obvious)>           *
+    !*                                                        *
+    !*                                                        *
+    !* Date:        Version:   Programmer:          Reason:   *
+    !* 2016-07-17   1.0        Fredrik Lofgren      created   *
+    !**********************************************************
