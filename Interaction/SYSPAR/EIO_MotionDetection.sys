@@ -1,0 +1,16 @@
+EIO:CFG_1.0:6:1::
+#
+SYSSIG_IN:
+
+      -Signal "MotionDetected" -Action "Interrupt" -Arg1 "Waving"\
+      -Arg2 "T_ROB_R"
+#
+EIO_CROSS:
+
+      -Name "ccMotionDetected" -Res "MotionDetected" -Act1 "custom_DI_7"\
+      -Act1_invert 
+
+#
+EIO_SIGNAL:
+      -Name "MotionDetected" -SignalType "DI"
+
